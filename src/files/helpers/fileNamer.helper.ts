@@ -10,6 +10,5 @@ export const fileNamer = (req: Express.Request, file: Express.Multer.File, callb
 
     const fileName = `${uuid()}.${fileExtension}`
 
-
     callback(null, fileName)
 }

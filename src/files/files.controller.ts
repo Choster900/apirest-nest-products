@@ -4,11 +4,15 @@ import { FilesService } from './files.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { fileFilter, fileNamer } from './helpers';
 import { diskStorage } from 'multer';
+import { ConfigModule } from '@nestjs/config';
 
 
 @Controller('files')
 export class FilesController {
-    constructor(private readonly filesService: FilesService) { }
+    constructor(
+        private readonly filesService: FilesService,
+        private readonly ConfigModule
+    ) { }
 
 
     @Get('product/:imageName')

@@ -9,6 +9,7 @@ import { ProductsModule } from './products/products.module';
 import { CommonModule } from './common/common.module';
 import { SeedModule } from './seed/seed.module';
 import { FilesModule } from './files/files.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
     imports: [
@@ -34,7 +35,9 @@ import { FilesModule } from './files/files.module';
             serveStaticOptions: {
                 index: false // Deshabilitar búsqueda automática de index.html
             }
-        })
+        }),
+
+        AuthModule
     ],
     controllers: [],
     providers: [],

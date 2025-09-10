@@ -2,8 +2,10 @@ import { BadRequestException, Injectable, InternalServerErrorException, Logger, 
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
+import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt'
 import { LoginUserDto, CreateUserDto } from './dto';
+import { JwtPayload } from './interfaces';
 
 @Injectable()
 export class AuthService {
@@ -11,7 +13,8 @@ export class AuthService {
     private readonly logger = new Logger('ProducsServices')
 
     constructor(
-        @InjectRepository(User) readonly userRepository: Repository<User>
+        @InjectRepository(User) readonly userRepository: Repository<User>,
+        private readonly jwtService: JwtService
     ) { }
 
     async create(createUserDto: CreateUserDto) {
@@ -24,7 +27,15 @@ export class AuthService {
                 password: bcrypt.hashSync(password, 10)
             })
 
-            return await this.userRepository.save(user)
+            await this.userRepository.save(user)
+
+            // Remove password from response
+            const { password: _, ...userWithoutPassword } = user;
+
+            return {
+                ...userWithoutPassword,
+                token: this.getJwtToken({ id: user.id })
+            };
 
         } catch (error) {
             this.handleDbExecptions(error)
@@ -38,7 +49,16 @@ export class AuthService {
 
         const user = await this.userRepository.findOne({
             where: { email },
-            select: { email: true, password: true }
+            select: {
+                email: true,
+                password: true,
+                id: true,
+                fullName: true,
+                isActive: true,
+                roles: true,
+                biometricEnabled: true,
+                deviceToken: true
+            }
         })
 
         if (!user) {
@@ -49,7 +69,25 @@ export class AuthService {
             throw new UnauthorizedException('Credentials are not valid ( password ) ')
         }
 
-        return user
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = user;
+
+        return {
+            ...userWithoutPassword,
+            token: this.getJwtToken({ id: user.id })
+        };
+    }
+
+    private getJwtToken(payload: JwtPayload) {
+        const token = this.jwtService.sign(payload);
+        return token;
+    }
+
+    async checkAuthStatus(user: User) {
+        return {
+            ...user,
+            token: this.getJwtToken({ id: user.id })
+        };
     }
 
     private handleDbExecptions(error: any): never {

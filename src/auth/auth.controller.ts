@@ -1,30 +1,42 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Headers } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto } from './dto';
+import { Auth, GetUser } from './decorators';
+import { User } from './entities/user.entity';
 
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) { }
 
-
     @Post('register')
     create(@Body() createUserDto: CreateUserDto) {
-
-        try {
-            return this.authService.create(createUserDto)
-        } catch (error) {
-
-        }
+        return this.authService.create(createUserDto);
     }
 
     @Post('login')
     loginUser(@Body() loginUserDto: LoginUserDto) {
-
-        try {
-            return this.authService.login(loginUserDto)
-        } catch (error) {
-
-        }
+        return this.authService.login(loginUserDto);
     }
 
+    @Get('check-auth-status')
+    @Auth()
+    checkAuthStatus(
+        @GetUser() user: User
+    ) {
+        return this.authService.checkAuthStatus(user);
+    }
+
+    @Get('private')
+    @Auth()
+    testingPrivateRoute(
+        @GetUser() user: User,
+        @GetUser('email') userEmail: string,
+    ) {
+        return {
+            ok: true,
+            message: 'Hola mundo privado',
+            user,
+            userEmail,
+        }
+    }
 }

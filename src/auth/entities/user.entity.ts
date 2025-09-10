@@ -30,4 +30,15 @@ export class User {
     })
     roles: string[]
 
+    @Column('bool', {
+        default: false
+    })
+    biometricEnabled: boolean;
+
+    @Column('text', {
+        nullable: true
+    })
+    deviceToken: string; // refresh token o identificador único del dispositivo
+
+
 }

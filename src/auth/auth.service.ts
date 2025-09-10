@@ -6,6 +6,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt'
 import { LoginUserDto, CreateUserDto } from './dto';
 import { JwtPayload } from './interfaces';
+import { v4 as uuid } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -130,6 +131,73 @@ export class AuthService {
                 throw new UnauthorizedException('Token has expired');
             }
             throw error;
+        }
+    }
+
+    async enableBiometrics(user: User) {
+        try {
+            // Validar si la biometría ya está habilitada
+            if (user.biometricEnabled && user.deviceToken) {
+                return {
+                    deviceToken: user.deviceToken,
+                    message: 'Biometrics already enabled for this user'
+                };
+            }
+
+            const deviceToken = uuid(); // Genera token aleatorio único
+
+            user.deviceToken = deviceToken;
+            user.biometricEnabled = true;
+
+            await this.userRepository.save(user);
+
+            return {
+                deviceToken,
+                message: 'Biometrics enabled successfully'
+            };
+
+        } catch (error) {
+            this.handleDbExecptions(error);
+        }
+    }
+
+    async loginWithDeviceToken(deviceToken: string) {
+        try {
+            const user = await this.userRepository.findOne({
+                where: { deviceToken },
+                select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    isActive: true,
+                    roles: true,
+                    biometricEnabled: true,
+                    deviceToken: true
+                }
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('Invalid device token');
+            }
+
+            if (!user.isActive) {
+                throw new UnauthorizedException('User is inactive, talk with an admin');
+            }
+
+            if (!user.biometricEnabled) {
+                throw new UnauthorizedException('Biometrics not enabled for this user');
+            }
+
+            return {
+                ...user,
+                token: this.getJwtToken({ id: user.id })
+            };
+
+        } catch (error) {
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            this.handleDbExecptions(error);
         }
     }
 

@@ -1,12 +1,14 @@
-import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto } from './dto';
+import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
 
 @Controller('auth')
 export class AuthController {
-    constructor(private readonly authService: AuthService) { }
+    constructor(
+        private readonly authService: AuthService
+    ) { }
 
     @Post('register')
     create(@Body() createUserDto: CreateUserDto) {
@@ -35,6 +37,19 @@ export class AuthController {
         const token = authHeader.substring(7); // Remove 'Bearer ' prefix
         return this.authService.verifyJwtToken(token);
     }
+
+
+    @Post('enable-biometrics')
+    @Auth()
+    async enableBiometrics(@GetUser() user: User) {
+        return this.authService.enableBiometrics(user);
+    }
+
+    @Post('login-with-device-token')
+    async loginWithDeviceToken(@Body() loginDeviceTokenDto: LoginDeviceTokenDto) {
+        return this.authService.loginWithDeviceToken(loginDeviceTokenDto.deviceToken);
+    }
+
 
     @Get('private')
     @Auth()

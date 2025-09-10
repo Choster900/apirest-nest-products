@@ -4,14 +4,14 @@ import { FilesService } from './files.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { fileFilter, fileNamer } from './helpers';
 import { diskStorage } from 'multer';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 
 
 @Controller('files')
 export class FilesController {
     constructor(
         private readonly filesService: FilesService,
-        private readonly ConfigModule
+        private readonly configService: ConfigService
     ) { }
 
 

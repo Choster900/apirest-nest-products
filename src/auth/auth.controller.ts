@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Headers } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto } from './dto';
 import { Auth, GetUser } from './decorators';
@@ -24,6 +24,16 @@ export class AuthController {
         @GetUser() user: User
     ) {
         return this.authService.checkAuthStatus(user);
+    }
+
+    @Get('check-status')
+    verifyToken(@Headers('authorization') authHeader: string) {
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            throw new BadRequestException('Authorization header with Bearer token is required');
+        }
+
+        const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+        return this.authService.verifyJwtToken(token);
     }
 
     @Get('private')

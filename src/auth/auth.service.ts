@@ -90,6 +90,49 @@ export class AuthService {
         };
     }
 
+    async verifyJwtToken(token: string) {
+        try {
+            // Verificar y decodificar el token
+            const payload = this.jwtService.verify(token);
+
+            // Buscar el usuario en la base de datos
+            const user = await this.userRepository.findOne({
+                where: { id: payload.id },
+                select: {
+                    id: true,
+                    email: true,
+                    fullName: true,
+                    isActive: true,
+                    roles: true,
+                    biometricEnabled: true,
+                    deviceToken: true
+                }
+            });
+
+            if (!user) {
+                throw new UnauthorizedException('User not found');
+            }
+
+            if (!user.isActive) {
+                throw new UnauthorizedException('User is inactive, talk with an admin');
+            }
+
+            return {
+                ...user,
+                token: this.getJwtToken({ id: user.id })
+            };
+
+        } catch (error) {
+            if (error.name === 'JsonWebTokenError') {
+                throw new UnauthorizedException('Invalid token');
+            }
+            if (error.name === 'TokenExpiredError') {
+                throw new UnauthorizedException('Token has expired');
+            }
+            throw error;
+        }
+    }
+
     private handleDbExecptions(error: any): never {
         if (error.code === '23505')
             throw new BadRequestException(error.detail)

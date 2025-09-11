@@ -38,7 +38,12 @@ export class User {
     @Column('text', {
         nullable: true
     })
-    deviceToken: string; // refresh token o identificador único del dispositivo
+    deviceToken: string | null; // refresh token o identificador único del dispositivo
+
+    @Column('boolean', {
+        default: false
+    })
+    allowMultipleSessions: boolean;
 
 
 }

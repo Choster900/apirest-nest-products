@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto } from './dto';
+import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
 
@@ -20,13 +20,6 @@ export class AuthController {
         return this.authService.login(loginUserDto);
     }
 
-    @Get('check-auth-status')
-    @Auth()
-    checkAuthStatus(
-        @GetUser() user: User
-    ) {
-        return this.authService.checkAuthStatus(user);
-    }
 
     @Get('check-status')
     verifyToken(@Headers('authorization') authHeader: string) {
@@ -39,10 +32,31 @@ export class AuthController {
     }
 
 
+    @Post('generate-device-token')
+    @Auth()
+    async generateDeviceToken() {
+        return this.authService.generateDeviceToken();
+    }
+
+    @Post('save-device-token')
+    @Auth()
+    async saveDeviceToken(@GetUser() user: User, @Body() saveDeviceTokenDto: SaveDeviceTokenDto) {
+        return this.authService.saveDeviceToken(user, saveDeviceTokenDto.deviceToken);
+    }
+
     @Post('enable-biometrics')
     @Auth()
     async enableBiometrics(@GetUser() user: User) {
         return this.authService.enableBiometrics(user);
+    }
+
+    @Post('disable-biometrics')
+    @Auth()
+    async disableBiometrics(@GetUser() user: User) {
+        await this.authService.disableBiometrics(user.id);
+        return {
+            message: 'Biometrics disabled successfully'
+        };
     }
 
     @Post('login-with-device-token')
@@ -50,6 +64,11 @@ export class AuthController {
         return this.authService.loginWithDeviceToken(loginDeviceTokenDto.deviceToken);
     }
 
+    @Post('allow-multiple-sessions')
+    @Auth()
+    async allowMultipleSessions(@GetUser() user: User, @Body('allow') allow: boolean) {
+        return this.authService.allowMultipleSessions(user.id, allow);
+    }
 
     @Get('private')
     @Auth()

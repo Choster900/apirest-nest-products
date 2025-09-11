@@ -1,5 +1,5 @@
-import { IsString } from "class-validator";
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Session } from "./sessions.entity";
 
 
 @Entity('users')
@@ -35,15 +35,17 @@ export class User {
     })
     biometricEnabled: boolean;
 
-    @Column('text', {
+   /*  @Column('text', {
         nullable: true
     })
-    deviceToken: string | null; // refresh token o identificador único del dispositivo
+    deviceToken: string | null; */
 
     @Column('boolean', {
         default: false
     })
     allowMultipleSessions: boolean;
 
+    @OneToMany(() => Session, session => session.user, { cascade: true })
+    sessions: Session[];
 
 }

@@ -10,4 +10,9 @@ export class SeedController {
     return this.seedService.runSeed();
   }
 
+  @Get('app-settings')
+  executeAppSettingsSeed() {
+    return this.seedService.runAppSettingsSeed();
+  }
+
 }

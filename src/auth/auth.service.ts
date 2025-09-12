@@ -104,7 +104,7 @@ export class AuthService {
 
     private async getAppSettings(): Promise<AppSettings> {
         let settings = await this.appSettingsRepository.findOne({ where: { id: 1 } });
-        
+
         if (!settings) {
             // Create initial settings if they don't exist
             settings = this.appSettingsRepository.create({
@@ -116,7 +116,7 @@ export class AuthService {
             });
             settings = await this.appSettingsRepository.save(settings);
         }
-        
+
         return settings;
     }
 
@@ -430,7 +430,7 @@ export class AuthService {
         try {
             // Incrementar la versión global de sesión para invalidar todos los JWTs
             await this.incrementGlobalSessionVersion();
-            
+
             // Opcional: Desactivar todas las sesiones físicas
             const result = await this.sessionRepository.update(
                 { isActive: true },

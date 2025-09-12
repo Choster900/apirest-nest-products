@@ -35,10 +35,10 @@ export class User {
     })
     deviceToken: string | null; */
 
-    @Column('boolean', {
+   /*  @Column('boolean', {
         default: false
     })
-    allowMultipleSessions: boolean;
+    allowMultipleSessions: boolean; */
 
     @OneToMany(() => Session, session => session.user, { cascade: true })
     sessions: Session[];

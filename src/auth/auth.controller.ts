@@ -23,11 +23,24 @@ export class AuthController {
 
     @Get('check-status')
     verifyToken(@Headers('authorization') authHeader: string) {
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            throw new BadRequestException('Authorization header with Bearer token is required');
+        // Validar que el header de autorización exista
+        if (!authHeader) {
+            throw new BadRequestException('Authorization header is required');
         }
 
+        // Validar que tenga el formato correcto
+        if (!authHeader.startsWith('Bearer ')) {
+            throw new BadRequestException('Authorization header must start with "Bearer "');
+        }
+
+        // Extraer el token
         const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+        // Validar que el token no esté vacío después de remover el prefijo
+        if (!token || token.trim().length === 0) {
+            throw new BadRequestException('Token is required in Authorization header');
+        }
+
         return this.authService.verifyJwtToken(token);
     }
 
@@ -59,16 +72,6 @@ export class AuthController {
     @Post('login-with-device-token')
     async loginWithDeviceToken(@Body() loginDeviceTokenDto: LoginDeviceTokenDto) {
         return this.authService.loginWithDeviceToken(loginDeviceTokenDto.deviceToken);
-    }
-
-    @Post('allow-multiple-sessions')
-    @Auth()
-    async allowMultipleSessions(@GetUser() user: User, @Body() allowMultipleSessionsDto: AllowMultipleSessionsDto) {
-        return this.authService.allowMultipleSessions(
-            user.id,
-            allowMultipleSessionsDto.allow,
-            allowMultipleSessionsDto.currentDeviceToken
-        );
     }
 
     @Get('private')

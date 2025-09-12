@@ -60,7 +60,6 @@ export class AuthService {
                 fullName: true,
                 isActive: true,
                 roles: true,
-                allowMultipleSessions: true
             }
         })
 
@@ -128,8 +127,18 @@ export class AuthService {
 
     async verifyJwtToken(token: string) {
         try {
-            // Verificar y decodificar el token
-            const payload = this.jwtService.verify(token);
+            // Validación básica del formato del token
+            if (!token || typeof token !== 'string' || token.trim().length === 0) {
+                throw new UnauthorizedException('Invalid token format');
+            }
+
+            // Verificar y decodificar el token (esto valida la firma y la expiración)
+            const payload = this.jwtService.verify(token) as JwtPayload;
+
+            // Validar que el payload tenga la estructura esperada
+            if (!payload || !payload.id || typeof payload.id !== 'string') {
+                throw new UnauthorizedException('Invalid token payload');
+            }
 
             // Buscar el usuario en la base de datos
             const user = await this.userRepository.findOne({
@@ -141,7 +150,6 @@ export class AuthService {
                     fullName: true,
                     isActive: true,
                     roles: true,
-                    allowMultipleSessions: true
                 }
             });
 
@@ -164,13 +172,23 @@ export class AuthService {
             };
 
         } catch (error) {
+            // Manejar errores específicos de JWT
             if (error.name === 'JsonWebTokenError') {
-                throw new UnauthorizedException('Invalid token');
+                throw new UnauthorizedException('Invalid token signature');
             }
             if (error.name === 'TokenExpiredError') {
                 throw new UnauthorizedException('Token has expired');
             }
-            throw error;
+            if (error.name === 'NotBeforeError') {
+                throw new UnauthorizedException('Token not active yet');
+            }
+            // Si ya es una UnauthorizedException, la re-lanzamos
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            // Para cualquier otro error, lo logueamos y lanzamos una excepción genérica
+            this.logger.error('Error verifying JWT token:', error);
+            throw new UnauthorizedException('Token validation failed');
         }
     }
 
@@ -202,12 +220,12 @@ export class AuthService {
             }
 
             // Si no permite múltiples sesiones, desactivar sesiones existentes
-            if (!user.allowMultipleSessions) {
+          /*   if (!user.allowMultipleSessions) {
                 await this.sessionRepository.update(
                     { userId: user.id, isActive: true },
                     { isActive: false }
                 );
-            }
+            } */
 
             // Crear o actualizar la sesión
             let session = await this.sessionRepository.findOne({
@@ -364,7 +382,6 @@ export class AuthService {
                 fullName: user.fullName,
                 isActive: user.isActive,
                 roles: user.roles,
-                allowMultipleSessions: user.allowMultipleSessions,
                 activeDeviceTokens,
                 deviceTokens,
                 token: this.getJwtToken({ id: user.id })
@@ -387,60 +404,4 @@ export class AuthService {
         throw new InternalServerErrorException('Error inesperado en el servidor')
     }
 
-
-    async allowMultipleSessions(userId: string, allow: boolean, currentDeviceToken?: string) {
-        try {
-            const user = await this.userRepository.findOneBy({ id: userId });
-            if (!user) throw new NotFoundException('User not found');
-
-            user.allowMultipleSessions = allow;
-            await this.userRepository.save(user);
-
-            // Si allow es false, desactivar todas las sesiones excepto la actual
-            if (!allow && currentDeviceToken) {
-                // Desactivar todas las sesiones activas excepto la del dispositivo actual
-                await this.sessionRepository.createQueryBuilder()
-                    .update()
-                    .set({ isActive: false })
-                    .where("userId = :userId", { userId })
-                    .andWhere("deviceToken != :currentDeviceToken", { currentDeviceToken })
-                    .andWhere("isActive = :isActive", { isActive: true })
-                    .execute();
-
-                // Obtener información actualizada de tokens
-                const deviceTokens = await this.getAllDeviceTokens(userId);
-                const activeDeviceTokens = await this.getActiveDeviceTokens(userId);
-
-                return {
-                    message: `Multiple sessions disabled successfully. All other sessions have been deactivated.`,
-                    activeDeviceTokens,
-                    deviceTokens
-                };
-            } else if (!allow && !currentDeviceToken) {
-                // Si no se proporciona currentDeviceToken, desactivar todas las sesiones
-               /*  await this.sessionRepository.update(
-                    { userId, isActive: true },
-                    { isActive: false }
-                ); */
-
-                return {
-                    message: `Multiple sessions disabled successfully. All sessions have been deactivated.`,
-                    activeDeviceTokens: [],
-                    deviceTokens: await this.getAllDeviceTokens(userId)
-                };
-            }
-
-            // Si allow es true, solo actualizar la configuración
-            const deviceTokens = await this.getAllDeviceTokens(userId);
-            const activeDeviceTokens = await this.getActiveDeviceTokens(userId);
-
-            return {
-                message: `Multiple sessions ${allow ? 'enabled' : 'disabled'} successfully.`,
-                activeDeviceTokens,
-                deviceTokens
-            };
-        } catch (error) {
-            this.handleDbExecptions(error);
-        }
-    }
 }

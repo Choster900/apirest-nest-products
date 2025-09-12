@@ -9,22 +9,26 @@ import { AuthController } from './auth.controller';
 import { User } from './entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { Session } from './entities/sessions.entity';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
+import { AppSettingsService } from '../app-settings/app-settings.service';
 
 @Module({
     controllers: [AuthController],
     providers: [AuthService, JwtStrategy],
     imports: [
         ConfigModule,
+        AppSettingsModule,
         TypeOrmModule.forFeature([User, Session]),
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.registerAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: (configService: ConfigService) => {
+            imports: [ConfigModule, AppSettingsModule],
+            inject: [ConfigService, AppSettingsService],
+            useFactory: async (configService: ConfigService, appSettingsService: AppSettingsService) => {
+                const appSettings = await appSettingsService.get();
                 return {
                     secret: configService.get('JWT_SECRET'),
                     signOptions: {
-                        expiresIn: '2h'
+                        expiresIn: `${appSettings.defaultMaxSessionMinutes * 60}s` // convertir minutos a segundos
                     }
                 }
             }

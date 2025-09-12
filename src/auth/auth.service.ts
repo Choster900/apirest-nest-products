@@ -224,8 +224,6 @@ export class AuthService {
                 session.isActive = true;
             }
 
-            // Habilitar biometría al guardar el token por primera vez
-            session.biometricEnabled = true;
             await this.sessionRepository.save(session);
 
             return {

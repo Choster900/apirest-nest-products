@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, InternalServerErrorException, Logger, 
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Session } from './entities/sessions.entity';
+import { AppSettings } from '../app-settings/entities/app-settings.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt'
@@ -17,6 +18,7 @@ export class AuthService {
     constructor(
         @InjectRepository(User) readonly userRepository: Repository<User>,
         @InjectRepository(Session) readonly sessionRepository: Repository<Session>,
+        @InjectRepository(AppSettings) readonly appSettingsRepository: Repository<AppSettings>,
         private readonly jwtService: JwtService
     ) { }
 
@@ -37,7 +39,7 @@ export class AuthService {
 
             return {
                 ...userWithoutPassword,
-                token: this.getJwtToken({ id: user.id })
+                token: await this.getJwtToken({ id: user.id })
             };
 
         } catch (error) {
@@ -86,13 +88,36 @@ export class AuthService {
             ...userWithoutPassword,
             activeDeviceTokens, // Para compatibilidad con código existente
             deviceTokens, // Nuevo campo con todos los tokens y su estado
-            token: this.getJwtToken({ id: user.id })
+            token: await this.getJwtToken({ id: user.id })
         };
     }
 
-    private getJwtToken(payload: JwtPayload) {
-        const token = this.jwtService.sign(payload);
-        return token;
+    private async getJwtToken(payload: JwtPayload) {
+        // Get current global session version
+        const appSettings = await this.getAppSettings();
+        const tokenPayload: JwtPayload = {
+            ...payload,
+            sessionVersion: appSettings.globalSessionVersion
+        };
+        return this.jwtService.sign(tokenPayload);
+    }
+
+    private async getAppSettings(): Promise<AppSettings> {
+        let settings = await this.appSettingsRepository.findOne({ where: { id: 1 } });
+        
+        if (!settings) {
+            // Create initial settings if they don't exist
+            settings = this.appSettingsRepository.create({
+                id: 1,
+                allowMultipleSessions: true,
+                globalSessionVersion: 0,
+                defaultMaxSessionMinutes: 60,
+                isActive: true,
+            });
+            settings = await this.appSettingsRepository.save(settings);
+        }
+        
+        return settings;
     }
 
     private async getActiveDeviceTokens(userId: string): Promise<string[]> {
@@ -140,6 +165,12 @@ export class AuthService {
                 throw new UnauthorizedException('Invalid token payload');
             }
 
+            // Verificar la versión global de sesión
+            const appSettings = await this.getAppSettings();
+            if (payload.sessionVersion !== undefined && payload.sessionVersion < appSettings.globalSessionVersion) {
+                throw new UnauthorizedException('Token has been invalidated by system administrator');
+            }
+
             // Buscar el usuario en la base de datos
             const user = await this.userRepository.findOne({
                 where: { id: payload.id },
@@ -166,7 +197,7 @@ export class AuthService {
 
             return {
                 ...user,
-                token: this.getJwtToken({ id: user.id }),
+                token: await this.getJwtToken({ id: user.id }),
                 activeDeviceTokens,
                 deviceTokens
             };
@@ -384,7 +415,7 @@ export class AuthService {
                 roles: user.roles,
                 activeDeviceTokens,
                 deviceTokens,
-                token: this.getJwtToken({ id: user.id })
+                token: await this.getJwtToken({ id: user.id })
             };
 
         } catch (error) {
@@ -393,6 +424,60 @@ export class AuthService {
             }
             this.handleDbExecptions(error);
         }
+    }
+
+    async logoutAllDevices(): Promise<{ message: string; devicesLoggedOut: number }> {
+        try {
+            // Incrementar la versión global de sesión para invalidar todos los JWTs
+            await this.incrementGlobalSessionVersion();
+            
+            // Opcional: Desactivar todas las sesiones físicas
+            const result = await this.sessionRepository.update(
+                { isActive: true },
+                { isActive: false }
+            );
+
+            return {
+                message: 'All devices have been logged out successfully',
+                devicesLoggedOut: result.affected || 0
+            };
+
+        } catch (error) {
+            this.handleDbExecptions(error);
+        }
+    }
+
+    async logoutAllDevicesForUser(userId: string): Promise<{ message: string; devicesLoggedOut: number }> {
+        try {
+            // Verificar que el usuario existe
+            const user = await this.userRepository.findOne({ where: { id: userId } });
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Desactivar todas las sesiones del usuario específico
+            const result = await this.sessionRepository.update(
+                { userId, isActive: true },
+                { isActive: false }
+            );
+
+            return {
+                message: `All devices for user ${user.email} have been logged out successfully`,
+                devicesLoggedOut: result.affected || 0
+            };
+
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            this.handleDbExecptions(error);
+        }
+    }
+
+    private async incrementGlobalSessionVersion(): Promise<void> {
+        const settings = await this.getAppSettings();
+        settings.globalSessionVersion += 1;
+        await this.appSettingsRepository.save(settings);
     }
 
     private handleDbExecptions(error: any): never {

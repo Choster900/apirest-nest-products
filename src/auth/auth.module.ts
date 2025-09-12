@@ -9,6 +9,7 @@ import { AuthController } from './auth.controller';
 import { User } from './entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { Session } from './entities/sessions.entity';
+import { AppSettings } from '../app-settings/entities/app-settings.entity';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { AppSettingsService } from '../app-settings/app-settings.service';
 
@@ -18,7 +19,7 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
     imports: [
         ConfigModule,
         AppSettingsModule,
-        TypeOrmModule.forFeature([User, Session]),
+        TypeOrmModule.forFeature([User, Session, AppSettings]),
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.registerAsync({
             imports: [ConfigModule, AppSettingsModule],

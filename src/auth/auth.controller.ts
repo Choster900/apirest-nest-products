@@ -87,4 +87,16 @@ export class AuthController {
             userEmail,
         }
     }
+
+    @Post('logout-all-devices')
+    @Auth() // Requiere autenticación - puedes agregar validación de roles después
+    async logoutAllDevices() {
+        return this.authService.logoutAllDevices();
+    }
+
+    @Post('logout-user-devices')
+    @Auth()
+    async logoutUserDevices(@GetUser() user: User) {
+        return this.authService.logoutAllDevicesForUser(user.id);
+    }
 }

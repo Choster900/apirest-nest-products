@@ -1,10 +1,10 @@
 import { IsBoolean, IsOptional } from 'class-validator';
 
 export class UpdateAllowMultipleSessionsDto {
-  @IsBoolean()
+  @IsBoolean({ message: 'allowMultipleSessions must be a boolean value' })
   allowMultipleSessions: boolean;
 
-  @IsBoolean()
+  @IsBoolean({ message: 'forceLogoutAll must be a boolean value' })
   @IsOptional()
   forceLogoutAll?: boolean = true;
 }

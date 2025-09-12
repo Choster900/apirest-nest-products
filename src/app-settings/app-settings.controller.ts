@@ -1,10 +1,14 @@
-import { Controller, Get, Patch, Body } from '@nestjs/common';
+import { Controller, Get, Patch, Body, ValidationPipe, UsePipes } from '@nestjs/common';
 import { AppSettingsService } from './app-settings.service';
-import { UpdateAllowMultipleSessionsDto } from './dto/update-allow-multiple-sessions.dto';
-import { UpdateDefaultsDto } from './dto/update-defaults.dto';
+import { UpdateAllSettingsDto } from './dto';
 import { AppSettings } from './entities/app-settings.entity';
 
 @Controller('admin/app-settings')
+@UsePipes(new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true
+}))
 export class AppSettingsController {
   constructor(private readonly appSettingsService: AppSettingsService) {}
 
@@ -13,18 +17,11 @@ export class AppSettingsController {
     return this.appSettingsService.get();
   }
 
-  @Patch('allow-multiple-sessions')
-  async updateAllowMultipleSessions(
-    @Body() updateDto: UpdateAllowMultipleSessionsDto,
+  @Patch()
+  async updateSettings(
+    @Body() updateDto: UpdateAllSettingsDto,
   ): Promise<AppSettings> {
-    return this.appSettingsService.updateAllowMultipleSessions(updateDto);
-  }
-
-  @Patch('defaults')
-  async updateDefaults(
-    @Body() updateDto: UpdateDefaultsDto,
-  ): Promise<AppSettings> {
-    return this.appSettingsService.updateDefaults(updateDto);
+    return this.appSettingsService.updateSettings(updateDto);
   }
 
   @Patch('logout-all')

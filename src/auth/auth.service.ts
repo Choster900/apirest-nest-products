@@ -112,8 +112,7 @@ export class AuthService {
                 allowMultipleSessions: true,
                 globalSessionVersion: 0,
                 defaultMaxSessionMinutes: 60,
-                isActive: true,
-            });
+             });
             settings = await this.appSettingsRepository.save(settings);
         }
 

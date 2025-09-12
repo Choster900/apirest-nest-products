@@ -14,9 +14,6 @@ export class AppSettings {
   @Column({ name: 'default_max_session_minutes', type: 'int', default: 60 })
   defaultMaxSessionMinutes: number;
 
-  @Column({ name: 'is_active', type: 'boolean', default: true })
-  isActive: boolean;
-
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
   updatedAt: Date;
 }

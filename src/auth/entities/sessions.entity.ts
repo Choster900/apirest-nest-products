@@ -23,6 +23,9 @@ export class Session {
     @Column('text', { nullable: true })
     deviceToken: string | null; // para login biométrico
 
+    @Column('boolean', { default: false })
+    biometricEnabled: boolean; // biometría habilitada para este dispositivo específico
+
     @Column('boolean', { default: true })
     isActive: boolean;
 

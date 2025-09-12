@@ -60,7 +60,6 @@ export class AuthService {
                 fullName: true,
                 isActive: true,
                 roles: true,
-                biometricEnabled: true,
                 allowMultipleSessions: true
             }
         })
@@ -114,7 +113,7 @@ export class AuthService {
     private async getAllDeviceTokens(userId: string): Promise<DeviceTokenInfo[]> {
         const sessions = await this.sessionRepository.find({
             where: { userId },
-            select: ['id', 'deviceToken', 'isActive']
+            select: ['id', 'deviceToken', 'isActive', 'biometricEnabled']
         });
 
         return sessions
@@ -122,7 +121,8 @@ export class AuthService {
             .map(session => ({
                 deviceToken: session.deviceToken!,
                 isActive: session.isActive,
-                sessionId: session.id
+                sessionId: session.id,
+                biometricEnabled: session.biometricEnabled
             }));
     }
 
@@ -141,7 +141,6 @@ export class AuthService {
                     fullName: true,
                     isActive: true,
                     roles: true,
-                    biometricEnabled: true,
                     allowMultipleSessions: true
                 }
             });
@@ -225,11 +224,9 @@ export class AuthService {
                 session.isActive = true;
             }
 
-            await this.sessionRepository.save(session);
-
             // Habilitar biometría al guardar el token por primera vez
-            user.biometricEnabled = true;
-            await this.userRepository.save(user);
+            session.biometricEnabled = true;
+            await this.sessionRepository.save(session);
 
             return {
                 deviceToken,
@@ -245,53 +242,93 @@ export class AuthService {
         }
     }
 
-    async enableBiometrics(user: User) {
+    async enableBiometrics(user: User, deviceToken: string) {
         try {
-            // Validar si la biometría ya está habilitada
-            if (user.biometricEnabled) {
+            // Buscar la sesión específica por device token
+            const session = await this.sessionRepository.findOne({
+                where: {
+                    userId: user.id,
+                    deviceToken: deviceToken
+                }
+            });
+
+            if (!session) {
+                throw new NotFoundException('Device token not found for this user. Make sure the device token is registered.');
+            }
+
+            if (!session.isActive) {
+                throw new BadRequestException('The specified device session is inactive. Please activate the session first.');
+            }
+
+            // Validar si la biometría ya está habilitada para este dispositivo
+            if (session.biometricEnabled) {
                 return {
-                    message: 'Biometrics already enabled for this user'
+                    message: 'Biometrics already enabled for this device',
+                    deviceToken: session.deviceToken,
+                    sessionId: session.id,
+                    biometricEnabled: session.biometricEnabled
                 };
             }
 
-            // Validar que haya un dispositivo registrado primero
-            const activeDeviceTokens = await this.getActiveDeviceTokens(user.id);
-
-            if (activeDeviceTokens.length === 0) {
-                throw new BadRequestException('You must save a device token first before enabling biometrics. Use /generate-device-token and then /save-device-token');
-            }
-
-            user.biometricEnabled = true;
-
-            await this.userRepository.save(user);
+            // Habilitar biometría para esta sesión específica
+            session.biometricEnabled = true;
+            await this.sessionRepository.save(session);
 
             return {
-                activeDeviceTokens,
-                message: 'Biometrics enabled successfully'
+                deviceToken: session.deviceToken,
+                sessionId: session.id,
+                biometricEnabled: session.biometricEnabled,
+                message: 'Biometrics enabled successfully for the specified device'
             };
 
         } catch (error) {
-            if (error instanceof BadRequestException) {
+            if (error instanceof BadRequestException || error instanceof NotFoundException) {
                 throw error;
             }
             this.handleDbExecptions(error);
         }
     }
 
-    async disableBiometrics(userId: string) {
+    async disableBiometrics(userId: string, deviceToken?: string) {
         try {
             const user = await this.userRepository.findOneBy({ id: userId });
             if (!user) throw new NotFoundException('User not found');
 
-            user.biometricEnabled = false;
+            if (deviceToken) {
+                // Deshabilitar biometría para un dispositivo específico
+                const session = await this.sessionRepository.findOne({
+                    where: { userId, deviceToken }
+                });
 
-            // Desactivar todas las sesiones del usuario
-            await this.sessionRepository.update(
-                { userId, isActive: true },
-                { isActive: false }
-            );
+                if (!session) {
+                    throw new NotFoundException('Device token not found for this user');
+                }
 
-            await this.userRepository.save(user);
+                session.biometricEnabled = false;
+                await this.sessionRepository.save(session);
+
+                return {
+                    message: 'Biometrics disabled successfully for the specified device',
+                    deviceToken: session.deviceToken,
+                    sessionId: session.id
+                };
+            } else {
+                // Deshabilitar biometría para todas las sesiones
+                await this.sessionRepository.update(
+                    { userId },
+                    { biometricEnabled: false }
+                );
+
+                // También desactivar todas las sesiones del usuario
+                await this.sessionRepository.update(
+                    { userId, isActive: true },
+                    { isActive: false }
+                );
+
+                return {
+                    message: 'Biometrics disabled successfully for all devices'
+                };
+            }
 
         } catch (error) {
             this.handleDbExecptions(error);
@@ -316,8 +353,8 @@ export class AuthService {
                 throw new UnauthorizedException('User is inactive, talk with an admin');
             }
 
-            if (!user.biometricEnabled) {
-                throw new UnauthorizedException('Biometrics not enabled for this user');
+            if (!session.biometricEnabled) {
+                throw new UnauthorizedException('Biometrics not enabled for this device');
             }
 
             const activeDeviceTokens = await this.getActiveDeviceTokens(user.id);
@@ -329,7 +366,6 @@ export class AuthService {
                 fullName: user.fullName,
                 isActive: user.isActive,
                 roles: user.roles,
-                biometricEnabled: user.biometricEnabled,
                 allowMultipleSessions: user.allowMultipleSessions,
                 activeDeviceTokens,
                 deviceTokens,
@@ -354,14 +390,56 @@ export class AuthService {
     }
 
 
-    async allowMultipleSessions(userId: string, allow: boolean) {
+    async allowMultipleSessions(userId: string, allow: boolean, currentDeviceToken?: string) {
         try {
             const user = await this.userRepository.findOneBy({ id: userId });
             if (!user) throw new NotFoundException('User not found');
+
             user.allowMultipleSessions = allow;
             await this.userRepository.save(user);
+
+            // Si allow es false, desactivar todas las sesiones excepto la actual
+            if (!allow && currentDeviceToken) {
+                // Desactivar todas las sesiones activas excepto la del dispositivo actual
+                await this.sessionRepository.createQueryBuilder()
+                    .update()
+                    .set({ isActive: false })
+                    .where("userId = :userId", { userId })
+                    .andWhere("deviceToken != :currentDeviceToken", { currentDeviceToken })
+                    .andWhere("isActive = :isActive", { isActive: true })
+                    .execute();
+
+                // Obtener información actualizada de tokens
+                const deviceTokens = await this.getAllDeviceTokens(userId);
+                const activeDeviceTokens = await this.getActiveDeviceTokens(userId);
+
+                return {
+                    message: `Multiple sessions disabled successfully. All other sessions have been deactivated.`,
+                    activeDeviceTokens,
+                    deviceTokens
+                };
+            } else if (!allow && !currentDeviceToken) {
+                // Si no se proporciona currentDeviceToken, desactivar todas las sesiones
+               /*  await this.sessionRepository.update(
+                    { userId, isActive: true },
+                    { isActive: false }
+                ); */
+
+                return {
+                    message: `Multiple sessions disabled successfully. All sessions have been deactivated.`,
+                    activeDeviceTokens: [],
+                    deviceTokens: await this.getAllDeviceTokens(userId)
+                };
+            }
+
+            // Si allow es true, solo actualizar la configuración
+            const deviceTokens = await this.getAllDeviceTokens(userId);
+            const activeDeviceTokens = await this.getActiveDeviceTokens(userId);
+
             return {
-                message: `Multiple sessions ${allow ? 'enabled' : 'disabled'} successfully.`
+                message: `Multiple sessions ${allow ? 'enabled' : 'disabled'} successfully.`,
+                activeDeviceTokens,
+                deviceTokens
             };
         } catch (error) {
             this.handleDbExecptions(error);

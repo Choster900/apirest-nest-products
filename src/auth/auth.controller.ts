@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto } from './dto';
+import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
 
@@ -46,17 +46,14 @@ export class AuthController {
 
     @Post('enable-biometrics')
     @Auth()
-    async enableBiometrics(@GetUser() user: User) {
-        return this.authService.enableBiometrics(user);
+    async enableBiometrics(@GetUser() user: User, @Body() enableBiometricsDto: EnableBiometricsDto) {
+        return this.authService.enableBiometrics(user, enableBiometricsDto.deviceToken);
     }
 
     @Post('disable-biometrics')
     @Auth()
-    async disableBiometrics(@GetUser() user: User) {
-        await this.authService.disableBiometrics(user.id);
-        return {
-            message: 'Biometrics disabled successfully'
-        };
+    async disableBiometrics(@GetUser() user: User, @Body() disableBiometricsDto: DisableBiometricsDto) {
+        return this.authService.disableBiometrics(user.id, disableBiometricsDto.deviceToken);
     }
 
     @Post('login-with-device-token')
@@ -66,8 +63,12 @@ export class AuthController {
 
     @Post('allow-multiple-sessions')
     @Auth()
-    async allowMultipleSessions(@GetUser() user: User, @Body('allow') allow: boolean) {
-        return this.authService.allowMultipleSessions(user.id, allow);
+    async allowMultipleSessions(@GetUser() user: User, @Body() allowMultipleSessionsDto: AllowMultipleSessionsDto) {
+        return this.authService.allowMultipleSessions(
+            user.id,
+            allowMultipleSessionsDto.allow,
+            allowMultipleSessionsDto.currentDeviceToken
+        );
     }
 
     @Get('private')

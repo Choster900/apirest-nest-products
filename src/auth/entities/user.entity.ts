@@ -30,11 +30,6 @@ export class User {
     })
     roles: string[]
 
-    @Column('bool', {
-        default: false
-    })
-    biometricEnabled: boolean;
-
    /*  @Column('text', {
         nullable: true
     })

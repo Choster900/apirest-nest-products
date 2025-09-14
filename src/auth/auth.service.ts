@@ -50,7 +50,7 @@ export class AuthService {
 
     async login(loginUserDto: LoginUserDto) {
 
-        const { password, email } = loginUserDto
+        const { password, email, deviceToken } = loginUserDto
 
         const user = await this.userRepository.findOne({
             where: { email },
@@ -81,6 +81,26 @@ export class AuthService {
             .filter(token => token.isActive)
             .map(token => token.deviceToken);
 
+        // Si se proporciona un device token, buscarlo y mostrarlo
+        let foundDeviceToken: any = null;
+        if (deviceToken) {
+            const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
+            if (deviceTokenInfo) {
+                foundDeviceToken = {
+                    deviceToken: deviceTokenInfo.deviceToken,
+                    isActive: deviceTokenInfo.isActive,
+                    sessionId: deviceTokenInfo.sessionId,
+                    biometricEnabled: deviceTokenInfo.biometricEnabled,
+                    message: 'Device token found successfully'
+                };
+            } else {
+                foundDeviceToken = {
+                    deviceToken,
+                    message: 'Device token not found for this user'
+                };
+            }
+        }
+
         // Remove password from response
         const { password: _, sessions, ...userWithoutPassword } = user;
 
@@ -88,6 +108,7 @@ export class AuthService {
             ...userWithoutPassword,
             activeDeviceTokens, // Para compatibilidad con código existente
             deviceTokens, // Nuevo campo con todos los tokens y su estado
+            foundDeviceToken, // Información del device token buscado
             token: await this.getJwtToken({ id: user.id })
         };
     }

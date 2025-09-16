@@ -21,7 +21,8 @@ import {
     FoundDeviceTokenInfo,
     DeviceTokenResponse,
     LogoutResponse,
-    BiometricResponse
+    BiometricResponse,
+    MainDeviceResponse
 } from './interfaces';
 import { v4 as uuid } from 'uuid';
 
@@ -167,6 +168,65 @@ export class AuthService {
             if (error instanceof BadRequestException) {
                 throw error;
             }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    /**
+     * Checks if a device token is the main device for the user
+     */
+    async checkMainDevice(user: User, deviceToken: string): Promise<MainDeviceResponse> {
+        try {
+            // Find the session for this device token
+            const session = await this.sessionRepository.findOne({
+                where: { userId: user.id, deviceToken }
+            });
+
+            if (!session) {
+                return {
+                    deviceToken,
+                    isMainDevice: false,
+                    message: 'Token de dispositivo no encontrado para este usuario',
+                    requiresConfirmation: false
+                };
+            }
+
+            // Get all active sessions for the user
+            const activeSessions = await this.sessionRepository.find({
+                where: { userId: user.id, isActive: true },
+                order: { createdAt: 'ASC' } // Order by creation date to find the first (main) device
+            });
+
+            if (activeSessions.length === 0) {
+                return {
+                    deviceToken,
+                    isMainDevice: false,
+                    message: 'No hay sesiones activas para este usuario',
+                    requiresConfirmation: false
+                };
+            }
+
+            // The main device is the first active session created
+            const mainDeviceSession = activeSessions[0];
+            const isMainDevice = mainDeviceSession.deviceToken === deviceToken;
+
+            if (isMainDevice) {
+                return {
+                    deviceToken,
+                    isMainDevice: true,
+                    message: 'Este dispositivo es el dispositivo principal'
+                };
+            } else {
+                return {
+                    deviceToken,
+                    isMainDevice: false,
+                    message: 'Este dispositivo no es el principal',
+                    requiresConfirmation: true,
+                    confirmationMessage: 'Este dispositivo pasará a ser el dispositivo principal. ¿Desea continuar?'
+                };
+            }
+        } catch (error) {
+            // Solo lanzar errores de base de datos, no errores de lógica de negocio
             this.handleDbExceptions(error);
         }
     }

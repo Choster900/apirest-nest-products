@@ -52,3 +52,14 @@ export interface BiometricResponse {
   biometricEnabled?: boolean;
   message: string;
 }
+
+/**
+ * Response for main device verification
+ */
+export interface MainDeviceResponse {
+  deviceToken: string;
+  isMainDevice: boolean;
+  message: string;
+  requiresConfirmation?: boolean;
+  confirmationMessage?: string;
+}

@@ -5,5 +5,6 @@ export {
   FoundDeviceTokenInfo, 
   DeviceTokenResponse, 
   LogoutResponse, 
-  BiometricResponse 
+  BiometricResponse,
+  MainDeviceResponse
 } from './auth-response.interface';

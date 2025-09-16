@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto } from './dto';
+import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto, CheckMainDeviceDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
 
@@ -86,6 +86,12 @@ export class AuthController {
             user,
             userEmail,
         }
+    }
+
+    @Post('check-main-device')
+    @Auth()
+    async checkMainDevice(@GetUser() user: User, @Body() checkMainDeviceDto: CheckMainDeviceDto) {
+        return this.authService.checkMainDevice(user, checkMainDeviceDto.deviceToken);
     }
 
     @Post('logout-all-devices')

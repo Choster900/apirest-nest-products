@@ -1,121 +1,388 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+    BadRequestException,
+    Injectable,
+    InternalServerErrorException,
+    Logger,
+    NotFoundException,
+    UnauthorizedException
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Session } from './entities/sessions.entity';
 import { AppSettings } from '../app-settings/entities/app-settings.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt'
+import * as bcrypt from 'bcrypt';
 import { LoginUserDto, CreateUserDto } from './dto';
-import { JwtPayload, DeviceTokenInfo } from './interfaces';
+import {
+    JwtPayload,
+    DeviceTokenInfo,
+    AuthResponse,
+    FoundDeviceTokenInfo,
+    DeviceTokenResponse,
+    LogoutResponse,
+    BiometricResponse
+} from './interfaces';
 import { v4 as uuid } from 'uuid';
 
+/**
+ * Authentication service handling user registration, login, token management, and device sessions
+ */
 @Injectable()
 export class AuthService {
-
-    private readonly logger = new Logger('ProducsServices')
+    private readonly logger = new Logger('AuthService');
+    private readonly SALT_ROUNDS = 10;
+    private readonly DEFAULT_SETTINGS_ID = 1;
 
     constructor(
-        @InjectRepository(User) readonly userRepository: Repository<User>,
-        @InjectRepository(Session) readonly sessionRepository: Repository<Session>,
-        @InjectRepository(AppSettings) readonly appSettingsRepository: Repository<AppSettings>,
+        @InjectRepository(User)
+        private readonly userRepository: Repository<User>,
+        @InjectRepository(Session)
+        private readonly sessionRepository: Repository<Session>,
+        @InjectRepository(AppSettings)
+        private readonly appSettingsRepository: Repository<AppSettings>,
         private readonly jwtService: JwtService
     ) { }
 
-    async create(createUserDto: CreateUserDto) {
+    // ==============================
+    // PUBLIC AUTH METHODS
+    // ==============================
+
+    /**
+     * Creates a new user account
+     */
+    async create(createUserDto: CreateUserDto): Promise<AuthResponse> {
         try {
+            const { password, ...userData } = createUserDto;
 
-            const { password, ...userData } = createUserDto
-
+            const hashedPassword = bcrypt.hashSync(password, this.SALT_ROUNDS);
             const user = this.userRepository.create({
                 ...userData,
-                password: bcrypt.hashSync(password, 10)
-            })
+                password: hashedPassword
+            });
 
-            await this.userRepository.save(user)
+            await this.userRepository.save(user);
 
-            // Remove password from response
-            const { password: _, ...userWithoutPassword } = user;
-
-            return {
-                ...userWithoutPassword,
-                token: await this.getJwtToken({ id: user.id })
-            };
-
+            return this.buildAuthResponse(user, null);
         } catch (error) {
-            this.handleDbExecptions(error)
+            this.handleDbExceptions(error);
         }
     }
 
+    /**
+     * Authenticates user with email/password and optional device token
+     */
+    async login(loginUserDto: LoginUserDto): Promise<AuthResponse> {
+        const { password, email, deviceToken } = loginUserDto;
 
-    async login(loginUserDto: LoginUserDto) {
+        // Find and validate user
+        const user = await this.findUserByEmail(email);
+        this.validateUser(user, password);
 
-        const { password, email, deviceToken } = loginUserDto
+        // Get device token information if provided
+        const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
 
+        return this.buildAuthResponse(user, foundDeviceToken);
+    }
+
+    /**
+     * Verifies JWT token and optionally returns device token info
+     */
+    async verifyJwtToken(token: string, deviceToken?: string): Promise<AuthResponse> {
+        try {
+            this.validateTokenFormat(token);
+            const payload = this.decodeAndValidateToken(token);
+            const user = await this.findUserById(payload.id);
+
+            this.validateUserStatus(user);
+            await this.validateTokenVersion(payload);
+
+            const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
+
+            return this.buildAuthResponse(user, foundDeviceToken);
+        } catch (error) {
+            this.handleTokenErrors(error);
+        }
+    }
+
+    /**
+     * Authenticates user using device token (biometric login)
+     */
+    async loginWithDeviceToken(deviceToken: string): Promise<AuthResponse> {
+        try {
+            const session = await this.findActiveSession(deviceToken);
+            const user = session.user;
+
+            this.validateUserStatus(user);
+            this.validateBiometricEnabled(session);
+
+            const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
+
+            return this.buildAuthResponse(user, foundDeviceToken);
+        } catch (error) {
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    // ==============================
+    // DEVICE TOKEN MANAGEMENT
+    // ==============================
+
+    /**
+     * Generates a new device token
+     */
+    async generateDeviceToken(): Promise<DeviceTokenResponse> {
+        try {
+            const deviceToken = uuid();
+            return {
+                deviceToken,
+                message: 'Device token generated successfully',
+                note: 'This token must be saved using /save-device-token endpoint'
+            };
+        } catch (error) {
+            this.handleDbExceptions(error);
+        }
+    }
+
+    /**
+     * Saves a device token for a user
+     */
+    async saveDeviceToken(user: User, deviceToken: string): Promise<DeviceTokenResponse> {
+        try {
+            await this.validateDeviceTokenUniqueness(deviceToken, user.id);
+
+            const session = await this.findOrCreateSession(user.id, deviceToken);
+            session.isActive = true;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken,
+                message: 'Device token saved successfully',
+                deviceStatus: 'registered'
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    // ==============================
+    // BIOMETRIC MANAGEMENT
+    // ==============================
+
+    /**
+     * Enables biometrics for a specific device
+     */
+    async enableBiometrics(user: User, deviceToken: string): Promise<BiometricResponse> {
+        try {
+            const session = await this.findUserSession(user.id, deviceToken);
+            this.validateSessionForBiometrics(session);
+
+            if (session.biometricEnabled) {
+                return {
+                    message: 'Biometrics already enabled for this device',
+                    deviceToken: session.deviceToken || undefined,
+                    sessionId: session.id,
+                    biometricEnabled: session.biometricEnabled
+                };
+            }
+
+            session.biometricEnabled = true;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken: session.deviceToken || undefined,
+                sessionId: session.id,
+                biometricEnabled: session.biometricEnabled,
+                message: 'Biometrics enabled successfully for the specified device'
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException || error instanceof NotFoundException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    /**
+     * Disables biometrics for specific device or all devices
+     */
+    async disableBiometrics(userId: string, deviceToken?: string): Promise<BiometricResponse> {
+        try {
+            const user = await this.findUserById(userId);
+
+            if (deviceToken) {
+                return this.disableBiometricsForDevice(userId, deviceToken);
+            } else {
+                return this.disableBiometricsForAllDevices(userId);
+            }
+        } catch (error) {
+            this.handleDbExceptions(error);
+        }
+    }
+
+    // ==============================
+    // LOGOUT OPERATIONS
+    // ==============================
+
+    /**
+     * Logs out all devices globally
+     */
+    async logoutAllDevices(): Promise<LogoutResponse> {
+        try {
+            await this.incrementGlobalSessionVersion();
+            const result = await this.sessionRepository.update(
+                { isActive: true },
+                { isActive: false }
+            );
+
+            return {
+                message: 'All devices have been logged out successfully',
+                devicesLoggedOut: result.affected || 0
+            };
+        } catch (error) {
+            this.handleDbExceptions(error);
+        }
+    }
+
+    /**
+     * Logs out all devices for a specific user
+     */
+    async logoutAllDevicesForUser(userId: string): Promise<LogoutResponse> {
+        try {
+            const user = await this.findUserById(userId);
+            const result = await this.sessionRepository.update(
+                { userId, isActive: true },
+                { isActive: false }
+            );
+
+            return {
+                message: `All devices for user ${user.email} have been logged out successfully`,
+                devicesLoggedOut: result.affected || 0
+            };
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    // ==============================
+    // PRIVATE HELPER METHODS - USER OPERATIONS
+    // ==============================
+
+    /**
+     * Finds user by email with password for authentication
+     */
+    private async findUserByEmail(email: string): Promise<User> {
         const user = await this.userRepository.findOne({
             where: { email },
-            relations: ['sessions'],
             select: {
+                id: true,
                 email: true,
                 password: true,
-                id: true,
                 fullName: true,
                 isActive: true,
                 roles: true,
             }
-        })
+        });
 
         if (!user) {
-            throw new UnauthorizedException('Credencials are not valid (email)')
+            throw new UnauthorizedException('Credentials are not valid (email)');
         }
 
-        if (!bcrypt.compareSync(password, user.password)) {
-            throw new UnauthorizedException('Credentials are not valid ( password ) ')
-        }
-
-        // Obtener configuración de la aplicación
-        const appSettings = await this.getAppSettings();
-
-        // Obtener todos los device tokens con su estado
-        const deviceTokens = await this.getAllDeviceTokens(user.id);
-
-        // Obtener solo los tokens activos para compatibilidad
-        const activeDeviceTokens = deviceTokens
-            .filter(token => token.isActive)
-            .map(token => token.deviceToken);
-
-        // Si se proporciona un device token, buscarlo y mostrarlo
-        let foundDeviceToken: any = null;
-        if (deviceToken) {
-            const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
-            if (deviceTokenInfo) {
-                foundDeviceToken = {
-                    deviceToken: deviceTokenInfo.deviceToken,
-                    isActive: deviceTokenInfo.isActive,
-                    sessionId: deviceTokenInfo.sessionId,
-                    biometricEnabled: deviceTokenInfo.biometricEnabled,
-                    message: 'Device token found successfully'
-                };
-            } else {
-                foundDeviceToken = null
-            }
-        }
-
-        // Remove password from response
-        const { password: _, sessions, ...userWithoutPassword } = user;
-
-        return {
-            ...userWithoutPassword,
-           /*  activeDeviceTokens, // Para compatibilidad con código existente
-            deviceTokens, // Nuevo campo con todos los tokens y su estado */
-            foundDeviceToken, // Información del device token buscado
-            allowMultipleSessions: appSettings.allowMultipleSessions, // Configuración de sesiones múltiples
-            token: await this.getJwtToken({ id: user.id })
-        };
+        return user;
     }
 
-    private async getJwtToken(payload: JwtPayload) {
-        // Get current global session version
+    /**
+     * Finds user by ID
+     */
+    private async findUserById(userId: string): Promise<User> {
+        const user = await this.userRepository.findOne({
+            where: { id: userId },
+            select: {
+                id: true,
+                email: true,
+                fullName: true,
+                isActive: true,
+                roles: true,
+            }
+        });
+
+        if (!user) {
+            throw new UnauthorizedException('User not found');
+        }
+
+        return user;
+    }
+
+    /**
+     * Validates user credentials
+     */
+    private validateUser(user: User, password: string): void {
+        if (!bcrypt.compareSync(password, user.password)) {
+            throw new UnauthorizedException('Credentials are not valid (password)');
+        }
+
+        this.validateUserStatus(user);
+    }
+
+    /**
+     * Validates user status
+     */
+    private validateUserStatus(user: User): void {
+        if (!user.isActive) {
+            throw new UnauthorizedException('User is inactive, talk with an admin');
+        }
+    }
+
+    // ==============================
+    // PRIVATE HELPER METHODS - TOKEN OPERATIONS
+    // ==============================
+
+    /**
+     * Validates token format
+     */
+    private validateTokenFormat(token: string): void {
+        if (!token || typeof token !== 'string' || token.trim().length === 0) {
+            throw new UnauthorizedException('Invalid token format');
+        }
+    }
+
+    /**
+     * Decodes and validates JWT token
+     */
+    private decodeAndValidateToken(token: string): JwtPayload {
+        const payload = this.jwtService.verify(token) as JwtPayload;
+
+        if (!payload || !payload.id || typeof payload.id !== 'string') {
+            throw new UnauthorizedException('Invalid token payload');
+        }
+
+        return payload;
+    }
+
+    /**
+     * Validates token version against global session version
+     */
+    private async validateTokenVersion(payload: JwtPayload): Promise<void> {
+        const appSettings = await this.getAppSettings();
+        if (payload.sessionVersion !== undefined &&
+            payload.sessionVersion < appSettings.globalSessionVersion) {
+            throw new UnauthorizedException('Token has been invalidated by system administrator');
+        }
+    }
+
+    /**
+     * Generates JWT token with current session version
+     */
+    private async getJwtToken(payload: JwtPayload): Promise<string> {
         const appSettings = await this.getAppSettings();
         const tokenPayload: JwtPayload = {
             ...payload,
@@ -124,37 +391,85 @@ export class AuthService {
         return this.jwtService.sign(tokenPayload);
     }
 
-    private async getAppSettings(): Promise<AppSettings> {
-        let settings = await this.appSettingsRepository.findOne({ where: { id: 1 } });
+    // ==============================
+    // PRIVATE HELPER METHODS - SESSION OPERATIONS
+    // ==============================
 
-        if (!settings) {
-            // Create initial settings if they don't exist
-            settings = this.appSettingsRepository.create({
-                id: 1,
-                allowMultipleSessions: true,
-                globalSessionVersion: 0,
-                defaultMaxSessionMinutes: 60,
-             });
-            settings = await this.appSettingsRepository.save(settings);
-        }
-
-        return settings;
-    }
-
-    private async getActiveDeviceTokens(userId: string): Promise<string[]> {
-        const activeSessions = await this.sessionRepository.find({
-            where: {
-                userId,
-                isActive: true
-            },
-            select: ['deviceToken']
+    /**
+     * Finds active session by device token
+     */
+    private async findActiveSession(deviceToken: string): Promise<Session> {
+        const session = await this.sessionRepository.findOne({
+            where: { deviceToken, isActive: true },
+            relations: ['user']
         });
 
-        return activeSessions
-            .map(session => session.deviceToken)
-            .filter((token): token is string => token !== null);
+        if (!session || !session.user) {
+            throw new UnauthorizedException('Invalid device token');
+        }
+
+        return session;
     }
 
+    /**
+     * Finds user session by user ID and device token
+     */
+    private async findUserSession(userId: string, deviceToken: string): Promise<Session> {
+        const session = await this.sessionRepository.findOne({
+            where: { userId, deviceToken }
+        });
+
+        if (!session) {
+            throw new NotFoundException('Device token not found for this user. Make sure the device token is registered.');
+        }
+
+        return session;
+    }
+
+    /**
+     * Finds or creates a session for user and device token
+     */
+    private async findOrCreateSession(userId: string, deviceToken: string): Promise<Session> {
+        let session = await this.sessionRepository.findOne({
+            where: { userId, deviceToken }
+        });
+
+        if (!session) {
+            session = this.sessionRepository.create({
+                userId,
+                deviceToken,
+                isActive: true
+            });
+        }
+
+        return session;
+    }
+
+    /**
+     * Validates session for biometric operations
+     */
+    private validateSessionForBiometrics(session: Session): void {
+        if (!session.isActive) {
+            throw new BadRequestException('The specified device session is inactive. Please activate the session first.');
+        }
+    }
+
+    /**
+     * Validates biometric is enabled for session
+     */
+    private validateBiometricEnabled(session: Session): void {
+        if (!session.biometricEnabled) {
+            throw new UnauthorizedException('Biometrics not enabled for this device');
+        }
+    }
+
+    // ==============================
+    // PRIVATE HELPER METHODS - DEVICE TOKEN OPERATIONS
+    // ==============================
+
+    /**
+     * Gets all device tokens for a user
+     */
     private async getAllDeviceTokens(userId: string): Promise<DeviceTokenInfo[]> {
         const sessions = await this.sessionRepository.find({
             where: { userId },
@@ -171,373 +486,177 @@ export class AuthService {
             }));
     }
 
-    async verifyJwtToken(token: string, deviceToken?: string) {
-        try {
-            // Validación básica del formato del token
-            if (!token || typeof token !== 'string' || token.trim().length === 0) {
-                throw new UnauthorizedException('Invalid token format');
-            }
+    /**
+     * Gets found device token information if deviceToken is provided
+     */
+    private async getFoundDeviceToken(userId: string, deviceToken?: string): Promise<FoundDeviceTokenInfo | null> {
+        if (!deviceToken) {
+            return null;
+        }
 
-            // Verificar y decodificar el token (esto valida la firma y la expiración)
-            const payload = this.jwtService.verify(token) as JwtPayload;
+        const deviceTokens = await this.getAllDeviceTokens(userId);
+        const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
 
-            // Validar que el payload tenga la estructura esperada
-            if (!payload || !payload.id || typeof payload.id !== 'string') {
-                throw new UnauthorizedException('Invalid token payload');
-            }
+        if (!deviceTokenInfo) {
+            return null;
+        }
 
-            // Verificar la versión global de sesión
-            const appSettings = await this.getAppSettings();
-            if (payload.sessionVersion !== undefined && payload.sessionVersion < appSettings.globalSessionVersion) {
-                throw new UnauthorizedException('Token has been invalidated by system administrator');
-            }
+        return {
+            deviceToken: deviceTokenInfo.deviceToken,
+            isActive: deviceTokenInfo.isActive,
+            sessionId: deviceTokenInfo.sessionId,
+            biometricEnabled: deviceTokenInfo.biometricEnabled,
+            message: 'Device token found successfully'
+        };
+    }
 
-            // Buscar el usuario en la base de datos
-            const user = await this.userRepository.findOne({
-                where: { id: payload.id },
-               // relations: ['sessions'],
-                select: {
-                    id: true,
-                    email: true,
-                    fullName: true,
-                    isActive: true,
-                    roles: true,
-                }
+    /**
+     * Validates device token uniqueness across users
+     */
+    private async validateDeviceTokenUniqueness(deviceToken: string, userId: string): Promise<void> {
+        const existingSession = await this.sessionRepository.findOne({
+            where: { deviceToken, isActive: true }
+        });
+
+        if (existingSession && existingSession.userId !== userId) {
+            throw new BadRequestException('This device token is already in use by another account');
+        }
+    }
+
+    // ==============================
+    // PRIVATE HELPER METHODS - BIOMETRIC OPERATIONS
+    // ==============================
+
+    /**
+     * Disables biometrics for specific device
+     */
+    private async disableBiometricsForDevice(userId: string, deviceToken: string): Promise<BiometricResponse> {
+        const session = await this.sessionRepository.findOne({
+            where: { userId, deviceToken }
+        });
+
+        if (!session) {
+            throw new NotFoundException('Device token not found for this user');
+        }
+
+        session.biometricEnabled = false;
+        await this.sessionRepository.save(session);
+
+        return {
+            message: 'Biometrics disabled successfully for the specified device',
+            deviceToken: session.deviceToken || undefined,
+            sessionId: session.id
+        };
+    }
+
+    /**
+     * Disables biometrics for all user devices
+     */
+    private async disableBiometricsForAllDevices(userId: string): Promise<BiometricResponse> {
+        // Disable biometrics for all sessions
+        await this.sessionRepository.update(
+            { userId },
+            { biometricEnabled: false }
+        );
+
+        // Deactivate all user sessions
+        await this.sessionRepository.update(
+            { userId, isActive: true },
+            { isActive: false }
+        );
+
+        return {
+            message: 'Biometrics disabled successfully for all devices'
+        };
+    }
+
+    // ==============================
+    // PRIVATE HELPER METHODS - SETTINGS & RESPONSE
+    // ==============================
+
+    /**
+     * Gets or creates app settings
+     */
+    private async getAppSettings(): Promise<AppSettings> {
+        let settings = await this.appSettingsRepository.findOne({
+            where: { id: this.DEFAULT_SETTINGS_ID }
+        });
+
+        if (!settings) {
+            settings = this.appSettingsRepository.create({
+                id: this.DEFAULT_SETTINGS_ID,
+                allowMultipleSessions: true,
+                globalSessionVersion: 0,
+                defaultMaxSessionMinutes: 60,
             });
-
-            if (!user) {
-                throw new UnauthorizedException('User not found');
-            }
-
-            if (!user.isActive) {
-                throw new UnauthorizedException('User is inactive, talk with an admin');
-            }
-
-            const activeDeviceTokens = await this.getActiveDeviceTokens(user.id);
-            const deviceTokens = await this.getAllDeviceTokens(user.id);
-
-            // Si se proporciona un device token, buscarlo y mostrarlo
-            let foundDeviceToken: any = null;
-            if (deviceToken) {
-                const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
-                if (deviceTokenInfo) {
-                    foundDeviceToken = {
-                        deviceToken: deviceTokenInfo.deviceToken,
-                        isActive: deviceTokenInfo.isActive,
-                        sessionId: deviceTokenInfo.sessionId,
-                        biometricEnabled: deviceTokenInfo.biometricEnabled,
-                        message: 'Device token found successfully'
-                    };
-                } else {
-                    foundDeviceToken = null
-                }
-            }
-
-            return {
-                ...user,
-                foundDeviceToken, // Información del device token buscado
-                allowMultipleSessions: appSettings.allowMultipleSessions,
-                token: await this.getJwtToken({ id: user.id })
-            };
-
-        } catch (error) {
-            // Manejar errores específicos de JWT
-            if (error.name === 'JsonWebTokenError') {
-                throw new UnauthorizedException('Invalid token signature');
-            }
-            if (error.name === 'TokenExpiredError') {
-                throw new UnauthorizedException('Token has expired');
-            }
-            if (error.name === 'NotBeforeError') {
-                throw new UnauthorizedException('Token not active yet');
-            }
-            // Si ya es una UnauthorizedException, la re-lanzamos
-            if (error instanceof UnauthorizedException) {
-                throw error;
-            }
-            // Para cualquier otro error, lo logueamos y lanzamos una excepción genérica
-            this.logger.error('Error verifying JWT token:', error);
-            throw new UnauthorizedException('Token validation failed');
+            settings = await this.appSettingsRepository.save(settings);
         }
+
+        return settings;
     }
 
-    async generateDeviceToken() {
-        try {
-            // Solo genera un token único sin guardarlo
-            const deviceToken = uuid();
+    /**
+     * Builds standardized auth response
+     */
+    private async buildAuthResponse(user: User, foundDeviceToken: FoundDeviceTokenInfo | null): Promise<AuthResponse> {
+        const appSettings = await this.getAppSettings();
+        const token = await this.getJwtToken({ id: user.id });
 
-            return {
-                deviceToken,
-                message: 'Device token generated successfully',
-                note: 'This token must be saved using /save-device-token endpoint'
-            };
-
-        } catch (error) {
-            this.handleDbExecptions(error);
-        }
+        return {
+            id: user.id,
+            email: user.email,
+            fullName: user.fullName,
+            isActive: user.isActive,
+            roles: user.roles,
+            foundDeviceToken,
+            allowMultipleSessions: appSettings.allowMultipleSessions,
+            token
+        };
     }
 
-    async saveDeviceToken(user: User, deviceToken: string) {
-        try {
-            // Verificar que el token no esté siendo usado por otro usuario
-            const existingSession = await this.sessionRepository.findOne({
-                where: { deviceToken, isActive: true }
-            });
-
-            if (existingSession && existingSession.userId !== user.id) {
-                throw new BadRequestException('This device token is already in use by another account');
-            }
-
-            // Si no permite múltiples sesiones, desactivar sesiones existentes
-          /*   if (!user.allowMultipleSessions) {
-                await this.sessionRepository.update(
-                    { userId: user.id, isActive: true },
-                    { isActive: false }
-                );
-            } */
-
-            // Crear o actualizar la sesión
-            let session = await this.sessionRepository.findOne({
-                where: { userId: user.id, deviceToken }
-            });
-
-            if (!session) {
-                session = this.sessionRepository.create({
-                    userId: user.id,
-                    deviceToken,
-                    isActive: true
-                });
-            } else {
-                session.isActive = true;
-            }
-
-            await this.sessionRepository.save(session);
-
-            return {
-                deviceToken,
-                message: 'Device token saved successfully',
-                deviceStatus: 'registered'
-            };
-
-        } catch (error) {
-            if (error instanceof BadRequestException) {
-                throw error;
-            }
-            this.handleDbExecptions(error);
-        }
-    }
-
-    async enableBiometrics(user: User, deviceToken: string) {
-        try {
-            // Buscar la sesión específica por device token
-            const session = await this.sessionRepository.findOne({
-                where: {
-                    userId: user.id,
-                    deviceToken: deviceToken
-                }
-            });
-
-            if (!session) {
-                throw new NotFoundException('Device token not found for this user. Make sure the device token is registered.');
-            }
-
-            if (!session.isActive) {
-                throw new BadRequestException('The specified device session is inactive. Please activate the session first.');
-            }
-
-            // Validar si la biometría ya está habilitada para este dispositivo
-            if (session.biometricEnabled) {
-                return {
-                    message: 'Biometrics already enabled for this device',
-                    deviceToken: session.deviceToken,
-                    sessionId: session.id,
-                    biometricEnabled: session.biometricEnabled
-                };
-            }
-
-            // Habilitar biometría para esta sesión específica
-            session.biometricEnabled = true;
-            await this.sessionRepository.save(session);
-
-            return {
-                deviceToken: session.deviceToken,
-                sessionId: session.id,
-                biometricEnabled: session.biometricEnabled,
-                message: 'Biometrics enabled successfully for the specified device'
-            };
-
-        } catch (error) {
-            if (error instanceof BadRequestException || error instanceof NotFoundException) {
-                throw error;
-            }
-            this.handleDbExecptions(error);
-        }
-    }
-
-    async disableBiometrics(userId: string, deviceToken?: string) {
-        try {
-            const user = await this.userRepository.findOneBy({ id: userId });
-            if (!user) throw new NotFoundException('User not found');
-
-            if (deviceToken) {
-                // Deshabilitar biometría para un dispositivo específico
-                const session = await this.sessionRepository.findOne({
-                    where: { userId, deviceToken }
-                });
-
-                if (!session) {
-                    throw new NotFoundException('Device token not found for this user');
-                }
-
-                session.biometricEnabled = false;
-                await this.sessionRepository.save(session);
-
-                return {
-                    message: 'Biometrics disabled successfully for the specified device',
-                    deviceToken: session.deviceToken,
-                    sessionId: session.id
-                };
-            } else {
-                // Deshabilitar biometría para todas las sesiones
-                await this.sessionRepository.update(
-                    { userId },
-                    { biometricEnabled: false }
-                );
-
-                // También desactivar todas las sesiones del usuario
-                await this.sessionRepository.update(
-                    { userId, isActive: true },
-                    { isActive: false }
-                );
-
-                return {
-                    message: 'Biometrics disabled successfully for all devices'
-                };
-            }
-
-        } catch (error) {
-            this.handleDbExecptions(error);
-        }
-    }
-
-    async loginWithDeviceToken(deviceToken: string) {
-        try {
-            // Buscar sesión activa con el device token
-            const session = await this.sessionRepository.findOne({
-                where: { deviceToken, isActive: true },
-                relations: ['user']
-            });
-
-            if (!session || !session.user) {
-                throw new UnauthorizedException('Invalid device token');
-            }
-
-            const user = session.user;
-
-            if (!user.isActive) {
-                throw new UnauthorizedException('User is inactive, talk with an admin');
-            }
-
-            if (!session.biometricEnabled) {
-                throw new UnauthorizedException('Biometrics not enabled for this device');
-            }
-
-            // Obtener configuración de la aplicación
-            const appSettings = await this.getAppSettings();
-
-            // Obtener todos los device tokens con su estado
-            const deviceTokens = await this.getAllDeviceTokens(user.id);
-
-            // Buscar el device token específico y crear la información
-            const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
-            const foundDeviceToken = deviceTokenInfo ? {
-                deviceToken: deviceTokenInfo.deviceToken,
-                isActive: deviceTokenInfo.isActive,
-                sessionId: deviceTokenInfo.sessionId,
-                biometricEnabled: deviceTokenInfo.biometricEnabled,
-                message: 'Device token found successfully'
-            } : null;
-
-            return {
-                id: user.id,
-                email: user.email,
-                fullName: user.fullName,
-                isActive: user.isActive,
-                roles: user.roles,
-                foundDeviceToken,
-                allowMultipleSessions: appSettings.allowMultipleSessions,
-                token: await this.getJwtToken({ id: user.id })
-            };
-
-        } catch (error) {
-            if (error instanceof UnauthorizedException) {
-                throw error;
-            }
-            this.handleDbExecptions(error);
-        }
-    }
-
-    async logoutAllDevices(): Promise<{ message: string; devicesLoggedOut: number }> {
-        try {
-            // Incrementar la versión global de sesión para invalidar todos los JWTs
-            await this.incrementGlobalSessionVersion();
-
-            // Opcional: Desactivar todas las sesiones físicas
-            const result = await this.sessionRepository.update(
-                { isActive: true },
-                { isActive: false }
-            );
-
-            return {
-                message: 'All devices have been logged out successfully',
-                devicesLoggedOut: result.affected || 0
-            };
-
-        } catch (error) {
-            this.handleDbExecptions(error);
-        }
-    }
-
-    async logoutAllDevicesForUser(userId: string): Promise<{ message: string; devicesLoggedOut: number }> {
-        try {
-            // Verificar que el usuario existe
-            const user = await this.userRepository.findOne({ where: { id: userId } });
-            if (!user) {
-                throw new NotFoundException('User not found');
-            }
-
-            // Desactivar todas las sesiones del usuario específico
-            const result = await this.sessionRepository.update(
-                { userId, isActive: true },
-                { isActive: false }
-            );
-
-            return {
-                message: `All devices for user ${user.email} have been logged out successfully`,
-                devicesLoggedOut: result.affected || 0
-            };
-
-        } catch (error) {
-            if (error instanceof NotFoundException) {
-                throw error;
-            }
-            this.handleDbExecptions(error);
-        }
-    }
-
+    /**
+     * Increments global session version to invalidate all tokens
+     */
     private async incrementGlobalSessionVersion(): Promise<void> {
         const settings = await this.getAppSettings();
         settings.globalSessionVersion += 1;
         await this.appSettingsRepository.save(settings);
     }
 
-    private handleDbExecptions(error: any): never {
-        if (error.code === '23505')
-            throw new BadRequestException(error.detail)
+    // ==============================
+    // ERROR HANDLING
+    // ==============================
 
-        this.logger.error(error)
+    /**
+     * Handles token-specific errors
+     */
+    private handleTokenErrors(error: any): never {
+        if (error.name === 'JsonWebTokenError') {
+            throw new UnauthorizedException('Invalid token signature');
+        }
+        if (error.name === 'TokenExpiredError') {
+            throw new UnauthorizedException('Token has expired');
+        }
+        if (error.name === 'NotBeforeError') {
+            throw new UnauthorizedException('Token not active yet');
+        }
+        if (error instanceof UnauthorizedException) {
+            throw error;
+        }
 
-        throw new InternalServerErrorException('Error inesperado en el servidor')
+        this.logger.error('Error verifying JWT token:', error);
+        throw new UnauthorizedException('Token validation failed');
     }
 
+    /**
+     * Handles database exceptions
+     */
+    private handleDbExceptions(error: any): never {
+        if (error.code === '23505') {
+            throw new BadRequestException(error.detail);
+        }
+
+        this.logger.error('Database error:', error);
+        throw new InternalServerErrorException('Unexpected server error');
+    }
 }

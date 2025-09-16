@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto } from './dto';
 import { Auth, GetUser } from './decorators';
@@ -22,7 +22,7 @@ export class AuthController {
 
 
     @Get('check-status')
-    verifyToken(@Headers('authorization') authHeader: string) {
+    verifyToken(@Headers('authorization') authHeader: string, @Query('deviceToken') deviceToken?: string) {
         // Validar que el header de autorización exista
         if (!authHeader) {
             throw new BadRequestException('Authorization header is required');
@@ -41,7 +41,7 @@ export class AuthController {
             throw new BadRequestException('Token is required in Authorization header');
         }
 
-        return this.authService.verifyJwtToken(token);
+        return this.authService.verifyJwtToken(token, deviceToken);
     }
 
 

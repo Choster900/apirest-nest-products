@@ -171,7 +171,7 @@ export class AuthService {
             }));
     }
 
-    async verifyJwtToken(token: string) {
+    async verifyJwtToken(token: string, deviceToken?: string) {
         try {
             // Validación básica del formato del token
             if (!token || typeof token !== 'string' || token.trim().length === 0) {
@@ -195,7 +195,7 @@ export class AuthService {
             // Buscar el usuario en la base de datos
             const user = await this.userRepository.findOne({
                 where: { id: payload.id },
-                relations: ['sessions'],
+               // relations: ['sessions'],
                 select: {
                     id: true,
                     email: true,
@@ -216,12 +216,28 @@ export class AuthService {
             const activeDeviceTokens = await this.getActiveDeviceTokens(user.id);
             const deviceTokens = await this.getAllDeviceTokens(user.id);
 
+            // Si se proporciona un device token, buscarlo y mostrarlo
+            let foundDeviceToken: any = null;
+            if (deviceToken) {
+                const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
+                if (deviceTokenInfo) {
+                    foundDeviceToken = {
+                        deviceToken: deviceTokenInfo.deviceToken,
+                        isActive: deviceTokenInfo.isActive,
+                        sessionId: deviceTokenInfo.sessionId,
+                        biometricEnabled: deviceTokenInfo.biometricEnabled,
+                        message: 'Device token found successfully'
+                    };
+                } else {
+                    foundDeviceToken = null
+                }
+            }
+
             return {
                 ...user,
-                token: await this.getJwtToken({ id: user.id }),
-                activeDeviceTokens,
-                deviceTokens,
-                allowMultipleSessions: appSettings.allowMultipleSessions
+                foundDeviceToken, // Información del device token buscado
+                allowMultipleSessions: appSettings.allowMultipleSessions,
+                token: await this.getJwtToken({ id: user.id })
             };
 
         } catch (error) {

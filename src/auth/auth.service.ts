@@ -94,10 +94,7 @@ export class AuthService {
                     message: 'Device token found successfully'
                 };
             } else {
-                foundDeviceToken = {
-                    deviceToken,
-                    message: 'Device token not found for this user'
-                };
+                foundDeviceToken = null
             }
         }
 
@@ -106,8 +103,8 @@ export class AuthService {
 
         return {
             ...userWithoutPassword,
-            activeDeviceTokens, // Para compatibilidad con código existente
-            deviceTokens, // Nuevo campo con todos los tokens y su estado
+           /*  activeDeviceTokens, // Para compatibilidad con código existente
+            deviceTokens, // Nuevo campo con todos los tokens y su estado */
             foundDeviceToken, // Información del device token buscado
             token: await this.getJwtToken({ id: user.id })
         };

@@ -73,6 +73,9 @@ export class AuthService {
             throw new UnauthorizedException('Credentials are not valid ( password ) ')
         }
 
+        // Obtener configuración de la aplicación
+        const appSettings = await this.getAppSettings();
+
         // Obtener todos los device tokens con su estado
         const deviceTokens = await this.getAllDeviceTokens(user.id);
 
@@ -106,6 +109,7 @@ export class AuthService {
            /*  activeDeviceTokens, // Para compatibilidad con código existente
             deviceTokens, // Nuevo campo con todos los tokens y su estado */
             foundDeviceToken, // Información del device token buscado
+            allowMultipleSessions: appSettings.allowMultipleSessions, // Configuración de sesiones múltiples
             token: await this.getJwtToken({ id: user.id })
         };
     }
@@ -216,7 +220,8 @@ export class AuthService {
                 ...user,
                 token: await this.getJwtToken({ id: user.id }),
                 activeDeviceTokens,
-                deviceTokens
+                deviceTokens,
+                allowMultipleSessions: appSettings.allowMultipleSessions
             };
 
         } catch (error) {

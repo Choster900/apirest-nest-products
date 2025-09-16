@@ -442,8 +442,21 @@ export class AuthService {
                 throw new UnauthorizedException('Biometrics not enabled for this device');
             }
 
-            const activeDeviceTokens = await this.getActiveDeviceTokens(user.id);
+            // Obtener configuración de la aplicación
+            const appSettings = await this.getAppSettings();
+
+            // Obtener todos los device tokens con su estado
             const deviceTokens = await this.getAllDeviceTokens(user.id);
+
+            // Buscar el device token específico y crear la información
+            const deviceTokenInfo = deviceTokens.find(token => token.deviceToken === deviceToken);
+            const foundDeviceToken = deviceTokenInfo ? {
+                deviceToken: deviceTokenInfo.deviceToken,
+                isActive: deviceTokenInfo.isActive,
+                sessionId: deviceTokenInfo.sessionId,
+                biometricEnabled: deviceTokenInfo.biometricEnabled,
+                message: 'Device token found successfully'
+            } : null;
 
             return {
                 id: user.id,
@@ -451,8 +464,8 @@ export class AuthService {
                 fullName: user.fullName,
                 isActive: user.isActive,
                 roles: user.roles,
-                activeDeviceTokens,
-                deviceTokens,
+                foundDeviceToken,
+                allowMultipleSessions: appSettings.allowMultipleSessions,
                 token: await this.getJwtToken({ id: user.id })
             };
 

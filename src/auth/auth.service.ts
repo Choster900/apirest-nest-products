@@ -187,7 +187,19 @@ export class AuthService {
                     deviceToken,
                     isMainDevice: false,
                     message: 'Token de dispositivo no encontrado para este usuario',
-                    requiresConfirmation: false
+                    requiresConfirmation: false,
+                    confirmationMessage: undefined
+                };
+            }
+
+            // Check if the device token session is inactive
+            if (!session.isActive) {
+                return {
+                    deviceToken,
+                    isMainDevice: false,
+                    message: 'Este dispositivo pasará a ser el principal',
+                    requiresConfirmation: true,
+                    confirmationMessage: 'Este dispositivo está inactivo pero se convertirá en el dispositivo principal. ¿Desea continuar?'
                 };
             }
 
@@ -202,7 +214,8 @@ export class AuthService {
                     deviceToken,
                     isMainDevice: false,
                     message: 'No hay sesiones activas para este usuario',
-                    requiresConfirmation: false
+                    requiresConfirmation: false,
+                    confirmationMessage: undefined
                 };
             }
 
@@ -214,7 +227,9 @@ export class AuthService {
                 return {
                     deviceToken,
                     isMainDevice: true,
-                    message: 'Este dispositivo es el dispositivo principal'
+                    message: 'Este dispositivo es el dispositivo principal',
+                    requiresConfirmation: false,
+                    confirmationMessage: undefined
                 };
             } else {
                 return {

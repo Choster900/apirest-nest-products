@@ -10,6 +10,7 @@ export interface AuthResponse {
   foundDeviceToken: FoundDeviceTokenInfo | null;
   allowMultipleSessions: boolean;
   token: string;
+  refreshToken: string;
 }
 
 /**

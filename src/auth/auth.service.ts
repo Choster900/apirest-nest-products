@@ -25,6 +25,7 @@ import {
     MainDeviceResponse
 } from './interfaces';
 import { v4 as uuid } from 'uuid';
+import { envs } from '../config';
 
 /**
  * Authentication service handling user registration, login, token management, and device sessions
@@ -48,6 +49,26 @@ export class AuthService {
     // ==============================
     // PUBLIC AUTH METHODS
     // ==============================
+
+    /**
+     * Generates a public token for authentication access
+     */
+    async generatePublicToken(): Promise<{ token: string; expiresIn: string }> {
+        const payload = {
+            isPublicKey: true,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60) // 1 año
+        };
+
+        const token = this.jwtService.sign(payload, {
+            secret: envs.JWT_PUBLIC_SECRET
+        });
+
+        return {
+            token,
+            expiresIn: '365d'
+        };
+    }
 
     /**
      * Creates a new user account
@@ -676,6 +697,7 @@ export class AuthService {
     private async buildAuthResponse(user: User, foundDeviceToken: FoundDeviceTokenInfo | null): Promise<AuthResponse> {
         const appSettings = await this.getAppSettings();
         const token = await this.getJwtToken({ id: user.id });
+        const refreshToken = await this.generateRefreshToken({ id: user.id });
 
         return {
             id: user.id,
@@ -685,8 +707,25 @@ export class AuthService {
             roles: user.roles,
             foundDeviceToken,
             allowMultipleSessions: appSettings.allowMultipleSessions,
-            token
+            token,
+            refreshToken
         };
+    }
+
+    /**
+     * Generates a refresh token with longer expiration
+     */
+    private async generateRefreshToken(payload: { id: string }): Promise<string> {
+        // 30 días por defecto
+        const expiresIn = '30d';
+        const { envs } = await import('../config');
+        return this.jwtService.sign(
+            { ...payload, type: 'refresh' },
+            {
+                secret: envs.JWT_PRIVATE_SECRET,
+                expiresIn
+            }
+        );
     }
 
     /**

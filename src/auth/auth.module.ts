@@ -27,7 +27,7 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
             useFactory: async (configService: ConfigService, appSettingsService: AppSettingsService) => {
                 const appSettings = await appSettingsService.get();
                 return {
-                    secret: configService.get('JWT_SECRET'),
+                    secret: configService.get('JWT_PRIVATE_SECRET') || configService.get('JWT_SECRET'),
                     signOptions: {
                         expiresIn: `${appSettings.defaultMaxSessionMinutes * 60}s` // convertir minutos a segundos
                     }

@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException, Query, Res, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto, CheckMainDeviceDto } from './dto';
+import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto, ToggleBiometricsDto, RefreshTokenDto, CheckMainDeviceDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
-import { PublicKeyGuard, CookieAuthGuard } from './guards';
+import { PublicKeyGuard, CookieAuthGuard, FlexibleAuthGuard, RefreshTokenGuard } from './guards';
 import { Response, Request } from 'express';
 
 @Controller('auth')
@@ -146,32 +146,72 @@ export class AuthController {
 
 
     @Post('generate-device-token')
-    @Auth()
-    async generateDeviceToken() {
+    @UseGuards(FlexibleAuthGuard)
+    async generateDeviceToken(@Req() request: Request) {
+        // El guard ya validó el token y adjuntó la información del usuario
+        const authResult = request['user'];
         return this.authService.generateDeviceToken();
     }
 
+    @Post('refresh-token')
+    @UseGuards(RefreshTokenGuard)
+    async refreshToken(@Body() refreshTokenDto: RefreshTokenDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
+        // El guard ya validó el refresh token y adjuntó el payload
+        const tokenPayload = request['user'];
+        
+        if (!tokenPayload || !tokenPayload['id']) {
+            throw new UnauthorizedException('Invalid token payload');
+        }
+        
+        const userId = tokenPayload['id'];
+        
+        // Generar nuevos tokens
+        const result = await this.authService.refreshTokens(userId, refreshTokenDto.deviceToken);
+        
+        // Establecer nuevas cookies
+        this.setSecureCookie(response, result.token);
+        this.setRefreshCookie(response, result.refreshToken);
+        
+        // Devolver nuevos tokens
+        return {
+            ...result,
+            message: 'Tokens refreshed successfully',
+            secureTokenSet: true,
+            refreshTokenSet: true
+        };
+    }
+
     @Post('save-device-token')
-    @Auth()
+    @UseGuards(FlexibleAuthGuard)
     async saveDeviceToken(@GetUser() user: User, @Body() saveDeviceTokenDto: SaveDeviceTokenDto) {
         return this.authService.saveDeviceToken(user, saveDeviceTokenDto.deviceToken);
     }
 
-    @Post('enable-biometrics')
-    @Auth()
-    async enableBiometrics(@GetUser() user: User, @Body() enableBiometricsDto: EnableBiometricsDto) {
-        return this.authService.enableBiometrics(user, enableBiometricsDto.deviceToken);
-    }
-
-    @Post('disable-biometrics')
-    @Auth()
-    async disableBiometrics(@GetUser() user: User, @Body() disableBiometricsDto: DisableBiometricsDto) {
-        return this.authService.disableBiometrics(user.id, disableBiometricsDto.deviceToken);
+    @Post('toggle-biometrics')
+    @UseGuards(FlexibleAuthGuard)
+    async toggleBiometrics(@GetUser() user: User, @Body() toggleBiometricsDto: ToggleBiometricsDto) {
+        const { deviceToken, enable } = toggleBiometricsDto;
+        
+        if (enable) {
+            return this.authService.enableBiometrics(user, deviceToken);
+        } else {
+            return this.authService.disableBiometrics(user.id, deviceToken);
+        }
     }
 
     @Post('login-with-device-token')
-    async loginWithDeviceToken(@Body() loginDeviceTokenDto: LoginDeviceTokenDto) {
-        return this.authService.loginWithDeviceToken(loginDeviceTokenDto.deviceToken);
+    async loginWithDeviceToken(
+        @Body() loginDeviceTokenDto: LoginDeviceTokenDto,
+        @Res({ passthrough: true }) response: Response
+    ) {
+        const result = await this.authService.loginWithDeviceToken(loginDeviceTokenDto.deviceToken);
+        this.setSecureCookie(response, result.token);
+        this.setRefreshCookie(response, result.refreshToken);
+        return {
+            ...result,
+            secureTokenSet: true,
+            refreshTokenSet: true
+        };
     }
 
     @Get('private')

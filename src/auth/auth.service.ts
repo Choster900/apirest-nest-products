@@ -71,6 +71,24 @@ export class AuthService {
     }
 
     /**
+     * Refreshes access token using a valid refresh token
+     */
+    async refreshTokens(userId: string, deviceToken?: string): Promise<AuthResponse> {
+        const user = await this.findUserById(userId);
+        this.validateUserStatus(user);
+        
+        // Validar versión de sesión actual
+        const appSettings = await this.getAppSettings();
+        // No necesitamos validar sessionVersion aquí porque el refresh token ya fue validado por el guard
+        
+        // Get device token information if provided
+        const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
+        
+        // Generar nuevos tokens
+        return this.buildAuthResponse(user, foundDeviceToken);
+    }
+
+    /**
      * Creates a new user account
      */
     async create(createUserDto: CreateUserDto): Promise<AuthResponse> {

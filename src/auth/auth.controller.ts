@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto, CheckMainDeviceDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
+import { PublicKeyGuard } from './guards';
 
 @Controller('auth')
 export class AuthController {
@@ -11,11 +12,13 @@ export class AuthController {
     ) { }
 
     @Post('register')
+    @UseGuards(PublicKeyGuard)
     create(@Body() createUserDto: CreateUserDto) {
         return this.authService.create(createUserDto);
     }
 
     @Post('login')
+    @UseGuards(PublicKeyGuard)
     loginUser(@Body() loginUserDto: LoginUserDto) {
         return this.authService.login(loginUserDto);
     }

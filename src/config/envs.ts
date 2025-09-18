@@ -12,6 +12,7 @@ interface EnvsVars {
     POSTGRES_PORT: number
     POSTGRES_HOST: string
     JWT_SECRET: string
+    PUBLIC_KEY: string
 }
 
 const envSchema = joi.object<EnvsVars>({
@@ -21,7 +22,8 @@ const envSchema = joi.object<EnvsVars>({
     POSTGRES_DB: joi.string(),
     POSTGRES_PORT: joi.number(),
     POSTGRES_HOST: joi.string(),
-    JWT_SECRET: joi.string().default('MySecretKey')
+    JWT_SECRET: joi.string().default('MySecretKey'),
+    PUBLIC_KEY: joi.string().required()
 }).unknown(true)
 
 const { error, value: EnvsVars } = envSchema.validate({
@@ -40,4 +42,5 @@ export const envs = {
     POSTGRES_PORT: EnvsVars.POSTGRES_PORT,
     POSTGRES_HOST: EnvsVars.POSTGRES_HOST,
     JWT_SECRET: EnvsVars.JWT_SECRET,
+    PUBLIC_KEY: EnvsVars.PUBLIC_KEY,
 }

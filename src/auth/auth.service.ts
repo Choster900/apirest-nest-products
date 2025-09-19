@@ -549,7 +549,13 @@ export class AuthService {
             ...payload,
             sessionVersion: appSettings.globalSessionVersion
         };
-        return this.jwtService.sign(tokenPayload);
+        
+        // Use the configured session duration from app settings
+        const expiresIn = `${appSettings.defaultMaxSessionMinutes}m`;
+        
+        return this.jwtService.sign(tokenPayload, {
+            expiresIn
+        });
     }
 
     // ==============================
@@ -748,7 +754,7 @@ export class AuthService {
                 id: this.DEFAULT_SETTINGS_ID,
                 allowMultipleSessions: true,
                 globalSessionVersion: 0,
-                defaultMaxSessionMinutes: 60,
+                defaultMaxSessionMinutes: 2, // 2 minutes expiration
             });
             settings = await this.appSettingsRepository.save(settings);
         }
@@ -782,7 +788,7 @@ export class AuthService {
      */
     private async generateRefreshToken(payload: { id: string }): Promise<string> {
         // 30 días por defecto
-        const expiresIn = '30d';
+        const expiresIn = '2m';
         const { envs } = await import('../config');
         return this.jwtService.sign(
             { ...payload, type: 'refresh' },

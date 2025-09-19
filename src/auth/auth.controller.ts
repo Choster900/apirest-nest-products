@@ -229,9 +229,15 @@ export class AuthController {
     }
 
     @Post('check-main-device')
-    @Auth()
+    @UseGuards(FlexibleAuthGuard)
     async checkMainDevice(@GetUser() user: User, @Body() checkMainDeviceDto: CheckMainDeviceDto) {
         return this.authService.checkMainDevice(user, checkMainDeviceDto.deviceToken);
+    }
+
+    @Post('set-main-device')
+    @UseGuards(FlexibleAuthGuard)
+    async setMainDevice(@GetUser() user: User, @Body() checkMainDeviceDto: CheckMainDeviceDto) {
+        return this.authService.setMainDevice(user, checkMainDeviceDto.deviceToken);
     }
 
     @Post('logout-all-devices')

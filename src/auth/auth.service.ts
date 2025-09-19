@@ -6,7 +6,7 @@ import {
     NotFoundException,
     UnauthorizedException
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Session } from './entities/sessions.entity';
 import { AppSettings } from '../app-settings/entities/app-settings.entity';
@@ -285,6 +285,53 @@ export class AuthService {
         }
     }
 
+    /**
+     * Sets a device as the main device, deactivating all others
+     */
+    async setMainDevice(user: User, deviceToken: string): Promise<MainDeviceResponse> {
+        try {
+
+            let wasActive = false;
+            // Find the session for this device token
+            const session = await this.sessionRepository.findOne({
+                where: { userId: user.id, deviceToken }
+            });
+
+            if (!session) {
+                return {
+                    deviceToken,
+                    isMainDevice: false,
+                    message: 'Token de dispositivo no encontrado para este usuario',
+                    requiresConfirmation: false,
+                    confirmationMessage: undefined
+                };
+            }
+
+            // Check if the device token session is inactive
+            wasActive = session.isActive;
+
+            // Deactivate all other devices for this user
+            await this.sessionRepository.update(
+                { userId: user.id, deviceToken: Not(deviceToken) },
+                { isActive: false }
+            );
+
+            // Activate this device as main device
+            session.isActive = true;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken,
+                isMainDevice: true,
+                message: 'Este dispositivo se ha convertido en el dispositivo principal',
+                requiresConfirmation: wasActive ? false : true,
+                confirmationMessage: undefined
+            };
+        } catch (error) {
+            this.handleDbExceptions(error);
+        }
+    }
+
     // ==============================
     // BIOMETRIC MANAGEMENT
     // ==============================
@@ -514,7 +561,7 @@ export class AuthService {
      */
     private async findActiveSession(deviceToken: string): Promise<Session> {
         const session = await this.sessionRepository.findOne({
-            where: { deviceToken, isActive: true },
+            where: { deviceToken/* , isActive: true  */},
             relations: ['user']
         });
 

@@ -21,10 +21,10 @@ export class AuthController {
     @UseGuards(PublicKeyGuard)
     async create(@Body() createUserDto: CreateUserDto, @Res({ passthrough: true }) response: Response) {
         const result = await this.authService.create(createUserDto);
-        
+
         // Establecer cookie HttpOnly segura (token seguro)
         this.setSecureCookie(response, result.token);
-        
+
         // Devolver datos del usuario CON el token normal en la respuesta
         return {
             ...result,
@@ -72,11 +72,11 @@ export class AuthController {
 
 
     @Get('check-status')
-    @UseGuards(CookieAuthGuard)
+    @UseGuards(FlexibleAuthGuard)
     verifyTokenFromCookie(@Req() request: Request, @Query('deviceToken') deviceToken?: string) {
         const tokenPayload = request['user'];
         const token = request['token'];
-        
+
         return this.authService.verifyJwtToken(token, deviceToken);
     }
 
@@ -84,11 +84,11 @@ export class AuthController {
     @UseGuards(CookieAuthGuard)
     getProfile(@Req() request: Request) {
         const tokenPayload = request['user'];
-        
+
         if (!tokenPayload) {
             throw new UnauthorizedException('Token payload not found');
         }
-        
+
         return {
             message: 'Profile accessed with secure cookie',
             user: {
@@ -158,20 +158,20 @@ export class AuthController {
     async refreshToken(@Body() refreshTokenDto: RefreshTokenDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
         // El guard ya validó el refresh token y adjuntó el payload
         const tokenPayload = request['user'];
-        
+
         if (!tokenPayload || !tokenPayload['id']) {
             throw new UnauthorizedException('Invalid token payload');
         }
-        
+
         const userId = tokenPayload['id'];
-        
+
         // Generar nuevos tokens
         const result = await this.authService.refreshTokens(userId, refreshTokenDto.deviceToken);
-        
+
         // Establecer nuevas cookies
         this.setSecureCookie(response, result.token);
         this.setRefreshCookie(response, result.refreshToken);
-        
+
         // Devolver nuevos tokens
         return {
             ...result,
@@ -191,7 +191,7 @@ export class AuthController {
     @UseGuards(FlexibleAuthGuard)
     async toggleBiometrics(@GetUser() user: User, @Body() toggleBiometricsDto: ToggleBiometricsDto) {
         const { deviceToken, enable } = toggleBiometricsDto;
-        
+
         if (enable) {
             return this.authService.enableBiometrics(user, deviceToken);
         } else {

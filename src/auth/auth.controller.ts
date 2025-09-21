@@ -73,11 +73,20 @@ export class AuthController {
 
     @Get('check-status')
     @UseGuards(FlexibleAuthGuard)
-    verifyTokenFromCookie(@Req() request: Request, @Query('deviceToken') deviceToken?: string) {
+    async verifyTokenFromCookie(@Req() request: Request, @Res({ passthrough: true }) response: Response, @Query('deviceToken') deviceToken?: string) {
         const tokenPayload = request['user'];
         const token = request['token'];
 
-        return this.authService.verifyJwtToken(token, deviceToken);
+        const result = await this.authService.verifyJwtToken(token, deviceToken);
+
+        // Actualizar cookies con los nuevos tokens generados
+        this.setSecureCookie(response, result.token);
+        this.setRefreshCookie(response, result.refreshToken);
+
+        return {
+            ...result,
+            cookiesUpdated: true // Indicador de que las cookies fueron actualizadas
+        };
     }
 
     @Get('profile')

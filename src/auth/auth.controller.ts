@@ -24,6 +24,12 @@ export class AuthController {
     @Post('register')
     @UseGuards(PublicKeyGuard)
     async create(@Body() createUserDto: CreateUserDto) {
+        // Validación previa: verificar si el email ya existe
+        const existingUser = await this.authService.findUserByEmailForValidation(createUserDto.email);
+        if (existingUser) {
+            throw new BadRequestException(`User with email ${createUserDto.email} already exists`);
+        }
+
         // Generar ID único para el job
         const jobId = uuid();
 
@@ -78,21 +84,27 @@ export class AuthController {
                 case 'completed':
                     response.result = job.returnvalue;
                     response.completedAt = job.finishedOn ? new Date(job.finishedOn).toISOString() : null;
+                    response.success = true;
                     break;
                 case 'failed':
                     response.error = job.failedReason;
                     response.failedAt = job.finishedOn ? new Date(job.finishedOn).toISOString() : null;
                     response.attempts = job.attemptsMade;
+                    response.success = false;
+                    response.statusCode = 400; // Indicar que es un error de cliente
                     break;
                 case 'waiting':
                     response.message = 'Job is waiting to be processed';
+                    response.success = null; // Aún no se sabe
                     break;
                 case 'active':
                     response.message = 'Job is currently being processed';
                     response.startedAt = job.processedOn ? new Date(job.processedOn).toISOString() : null;
+                    response.success = null; // Aún no se sabe
                     break;
                 case 'delayed':
                     response.message = 'Job is delayed';
+                    response.success = null; // Aún no se sabe
                     break;
             }
 

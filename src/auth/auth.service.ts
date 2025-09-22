@@ -51,6 +51,16 @@ export class AuthService {
     // ==============================
 
     /**
+     * Finds user by email for validation purposes (doesn't throw if not found)
+     */
+    async findUserByEmailForValidation(email: string): Promise<User | null> {
+        return await this.userRepository.findOne({
+            where: { email },
+            select: ['id', 'email']
+        });
+    }
+
+    /**
      * Generates a public token for authentication access
      */
     async generatePublicToken(): Promise<{ token: string; expiresIn: string }> {
@@ -154,7 +164,7 @@ export class AuthService {
             const user = session.user;
 
             this.validateUserStatus(user);
-            this.validateBiometricEnabled(session);
+            //this.validateBiometricEnabled(session);
 
             const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
 
@@ -455,7 +465,7 @@ export class AuthService {
         });
 
         if (!user) {
-            throw new UnauthorizedException('Credentials are not valid (email)');
+            throw new NotFoundException('Credentials are not valid (email)');
         }
 
         return user;

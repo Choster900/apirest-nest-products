@@ -1,15 +1,19 @@
-import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException, Query, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException, Query, Res, Req, Param } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto, ToggleBiometricsDto, RefreshTokenDto, CheckMainDeviceDto } from './dto';
 import { Auth, GetUser } from './decorators';
 import { User } from './entities/user.entity';
 import { PublicKeyGuard, CookieAuthGuard, FlexibleAuthGuard, RefreshTokenGuard } from './guards';
 import { Response, Request } from 'express';
+import { v4 as uuid } from 'uuid';
 
 @Controller('auth')
 export class AuthController {
     constructor(
-        private readonly authService: AuthService
+        private readonly authService: AuthService,
+        @InjectQueue('users') private usersQueue: Queue
     ) { }
 
     @Get('get-public-key')
@@ -19,17 +23,86 @@ export class AuthController {
 
     @Post('register')
     @UseGuards(PublicKeyGuard)
-    async create(@Body() createUserDto: CreateUserDto, @Res({ passthrough: true }) response: Response) {
-        const result = await this.authService.create(createUserDto);
+    async create(@Body() createUserDto: CreateUserDto) {
+        // Generar ID único para el job
+        const jobId = uuid();
 
-        // Establecer cookie HttpOnly segura (token seguro)
-        this.setSecureCookie(response, result.token);
+        // Agregar el job a la cola
+        const job = await this.usersQueue.add('register', {
+            userData: createUserDto,
+            jobId: jobId
+        }, {
+            // Configuraciones del job
+            attempts: 3, // Reintentar hasta 3 veces si falla
+            backoff: {
+                type: 'exponential',
+                delay: 2000, // 2 segundos inicial, luego 4s, 8s...
+            },
+            removeOnComplete: 10, // Mantener solo 10 jobs completados
+            removeOnFail: 5, // Mantener solo 5 jobs fallidos
+        });
 
-        // Devolver datos del usuario CON el token normal en la respuesta
         return {
-            ...result,
-            secureTokenSet: true // Indicador de que la cookie segura fue establecida
+            message: 'User registration queued successfully',
+            jobId: jobId,
+            status: 'queued',
+            estimatedProcessingTime: '2-5 seconds',
+            note: 'Check job status using /auth/job-status/:jobId endpoint'
         };
+    }
+
+    @Get('job-status/:jobId')
+    @UseGuards(PublicKeyGuard)
+    async getJobStatus(@Param('jobId') jobId: string) {
+        try {
+            // Buscar el job por ID
+            const job = await this.usersQueue.getJob(jobId);
+
+            if (!job) {
+                throw new NotFoundException(`Job with ID ${jobId} not found`);
+            }
+
+            const state = await job.getState();
+            const progress = job.progress();
+
+            // Preparar respuesta base
+            const response: any = {
+                jobId,
+                status: state,
+                progress,
+                createdAt: new Date(job.timestamp).toISOString(),
+            };
+
+            // Agregar información específica según el estado
+            switch (state) {
+                case 'completed':
+                    response.result = job.returnvalue;
+                    response.completedAt = job.finishedOn ? new Date(job.finishedOn).toISOString() : null;
+                    break;
+                case 'failed':
+                    response.error = job.failedReason;
+                    response.failedAt = job.finishedOn ? new Date(job.finishedOn).toISOString() : null;
+                    response.attempts = job.attemptsMade;
+                    break;
+                case 'waiting':
+                    response.message = 'Job is waiting to be processed';
+                    break;
+                case 'active':
+                    response.message = 'Job is currently being processed';
+                    response.startedAt = job.processedOn ? new Date(job.processedOn).toISOString() : null;
+                    break;
+                case 'delayed':
+                    response.message = 'Job is delayed';
+                    break;
+            }
+
+            return response;
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException(`Error checking job status: ${error.message}`);
+        }
     }
 
     @Post('login')

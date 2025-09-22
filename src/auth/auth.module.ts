@@ -12,11 +12,16 @@ import { Session } from './entities/sessions.entity';
 import { AppSettings } from '../app-settings/entities/app-settings.entity';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { AppSettingsService } from '../app-settings/app-settings.service';
+import { UserProcessor } from './user.processor';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy],
+    providers: [AuthService, JwtStrategy, UserProcessor],
     imports: [
+        BullModule.registerQueue({
+            name: 'users', // 👈 este nombre debe coincidir con el de @InjectQueue('users')
+        }),
         ConfigModule,
         AppSettingsModule,
         TypeOrmModule.forFeature([User, Session, AppSettings]),

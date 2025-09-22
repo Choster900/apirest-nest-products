@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { BullModule } from '@nestjs/bull';
 import { join } from 'path';
 
 import { envs } from './config';
@@ -15,6 +16,21 @@ import { AppSettingsModule } from './app-settings/app-settings.module';
 @Module({
     imports: [
         ConfigModule.forRoot(),
+
+        // Configuración de Bull para colas
+        BullModule.forRoot({
+            redis: {
+                host: envs.REDIS_HOST,
+                port: envs.REDIS_PORT,
+                password: envs.REDIS_PASSWORD || undefined,
+            },
+        }),
+
+        // Registrar cola de usuarios
+        BullModule.registerQueue({
+            name: 'users',
+        }),
+
         TypeOrmModule.forRoot({
             type: 'postgres',
             host: envs.POSTGRES_HOST,

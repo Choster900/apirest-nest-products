@@ -15,6 +15,9 @@ interface EnvsVars {
     JWT_PRIVATE_SECRET: string
     JWT_PUBLIC_SECRET: string
     PUBLIC_KEY: string
+    REDIS_HOST: string
+    REDIS_PORT: number
+    REDIS_PASSWORD: string
 }
 
 const envSchema = joi.object<EnvsVars>({
@@ -27,7 +30,10 @@ const envSchema = joi.object<EnvsVars>({
     JWT_SECRET: joi.string().default('MySecretKey'),
     JWT_PRIVATE_SECRET: joi.string().default('MyPrivateSecretKey'),
     JWT_PUBLIC_SECRET: joi.string().default('MyPublicSecretKey'),
-    PUBLIC_KEY: joi.string().required()
+    PUBLIC_KEY: joi.string().required(),
+    REDIS_HOST: joi.string().default('localhost'),
+    REDIS_PORT: joi.number().default(6379),
+    REDIS_PASSWORD: joi.string().optional().allow('')
 }).unknown(true)
 
 const { error, value: EnvsVars } = envSchema.validate({
@@ -49,4 +55,7 @@ export const envs = {
     JWT_PRIVATE_SECRET: EnvsVars.JWT_PRIVATE_SECRET,
     JWT_PUBLIC_SECRET: EnvsVars.JWT_PUBLIC_SECRET,
     PUBLIC_KEY: EnvsVars.PUBLIC_KEY,
+    REDIS_HOST: EnvsVars.REDIS_HOST,
+    REDIS_PORT: EnvsVars.REDIS_PORT,
+    REDIS_PASSWORD: EnvsVars.REDIS_PASSWORD,
 }

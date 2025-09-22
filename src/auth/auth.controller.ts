@@ -30,7 +30,6 @@ export class AuthController {
             throw new BadRequestException(`User with email ${createUserDto.email} already exists`);
         }
 
-        // Generar ID único para el job
         const jobId = uuid();
 
         // Agregar el job a la cola
@@ -38,14 +37,13 @@ export class AuthController {
             userData: createUserDto,
             jobId: jobId
         }, {
-            // Configuraciones del job
-            attempts: 3, // Reintentar hasta 3 veces si falla
+            attempts: 3, 
             backoff: {
                 type: 'exponential',
-                delay: 2000, // 2 segundos inicial, luego 4s, 8s...
+                delay: 2000, 
             },
-            removeOnComplete: 10, // Mantener solo 10 jobs completados
-            removeOnFail: 5, // Mantener solo 5 jobs fallidos
+            removeOnComplete: 10, 
+            removeOnFail: 5,
         });
 
         return {

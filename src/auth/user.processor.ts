@@ -8,9 +8,9 @@ import { CreateUserDto } from './dto';
 export class UserProcessor {
     private readonly logger = new Logger(UserProcessor.name);
 
-    constructor(private readonly authService: AuthService) {}
+    constructor(private readonly authService: AuthService) { }
 
-    @Process('register')
+    @Process({ name: 'register', concurrency: 2 })
     async handleUserRegistration(job: Job<{ userData: CreateUserDto; jobId: string }>) {
         const { userData, jobId } = job.data;
 

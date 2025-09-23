@@ -86,14 +86,14 @@ export class AuthService {
     async refreshTokens(userId: string, deviceToken?: string): Promise<AuthResponse> {
         const user = await this.findUserById(userId);
         this.validateUserStatus(user);
-        
+
         // Validar versión de sesión actual
         const appSettings = await this.getAppSettings();
         // No necesitamos validar sessionVersion aquí porque el refresh token ya fue validado por el guard
-        
+
         // Get device token information if provided
         const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
-        
+
         // Generar nuevos tokens
         return this.buildAuthResponse(user, foundDeviceToken);
     }
@@ -127,7 +127,11 @@ export class AuthService {
 
         // Find and validate user
         const user = await this.findUserByEmail(email);
-        this.validateUser(user, password);
+        console.log("user found:", user);
+        const isValid = await this.validateUser(user, password);
+        if (!isValid) {
+            throw new UnauthorizedException('Invalid credentials');
+        }
 
         // Get device token information if provided
         const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
@@ -461,6 +465,9 @@ export class AuthService {
                 fullName: true,
                 isActive: true,
                 roles: true,
+                failedAttempts: true,
+                blockedUntil: true,
+                lastFailedAt: true
             }
         });
 
@@ -493,15 +500,56 @@ export class AuthService {
         return user;
     }
 
+    getTimeLeft(blockedUntil: Date): { minutes: number; seconds: number } {
+        const now = new Date();
+        const totalSeconds = Math.ceil((blockedUntil.getTime() - now.getTime()) / 1000);
+
+        if (totalSeconds <= 0) {
+            return { minutes: 0, seconds: 0 };
+        }
+
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+
+        return { minutes, seconds };
+    }
     /**
      * Validates user credentials
      */
-    private validateUser(user: User, password: string): void {
-        if (!bcrypt.compareSync(password, user.password)) {
-            throw new UnauthorizedException('Credentials are not valid (password)');
+    private async validateUser(user: User, password: string): Promise<boolean> {
+
+        // Check if user is blocked due to too many failed attempts
+        if (user.blockedUntil && user.blockedUntil > new Date()) {
+            const { minutes, seconds } = this.getTimeLeft(user.blockedUntil);
+            throw new UnauthorizedException(`Too many failed login attempts. Try again in ${minutes} minute(s) and ${seconds} second(s).`);
         }
 
+        if (!bcrypt.compareSync(password, user.password)) {
+
+            user.failedAttempts = (user.failedAttempts || 0) + 1;
+
+            console.log("Failed attempts:", user.failedAttempts);
+            if (user.failedAttempts >= 3) {
+                user.blockedUntil = new Date(Date.now() + 1.5 * 60 * 1000); // 1.5 minutos
+                user.failedAttempts = 0; // resetear para próximo intento
+                user.lastFailedAt = new Date();
+            }
+
+            await this.userRepository.save(user);
+
+            //throw new UnauthorizedException('Credentials are not valid (password)');
+
+            return false;
+        }
+
+        // Reset failed attempts on successful login
+        user.failedAttempts = 0;
+        user.blockedUntil = undefined;
+        await this.userRepository.save(user);
+
         this.validateUserStatus(user);
+
+        return true
     }
 
     /**
@@ -559,10 +607,10 @@ export class AuthService {
             ...payload,
             sessionVersion: appSettings.globalSessionVersion
         };
-        
+
         // Use the configured session duration from app settings
         const expiresIn = `${appSettings.defaultMaxSessionMinutes}m`;
-        
+
         return this.jwtService.sign(tokenPayload, {
             expiresIn
         });
@@ -577,7 +625,7 @@ export class AuthService {
      */
     private async findActiveSession(deviceToken: string): Promise<Session> {
         const session = await this.sessionRepository.findOne({
-            where: { deviceToken/* , isActive: true  */},
+            where: { deviceToken/* , isActive: true  */ },
             relations: ['user']
         });
 

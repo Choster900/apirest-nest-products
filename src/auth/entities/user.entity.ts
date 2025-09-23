@@ -30,15 +30,30 @@ export class User {
     })
     roles: string[]
 
-   /*  @Column('text', {
+    @Column('int', {
+        default: 0
+    })
+    failedAttempts: number;  // número de intentos fallidos
+
+    @Column('timestamp', {
         nullable: true
     })
-    deviceToken: string | null; */
+    lastFailedAt: Date;      // última vez que falló
 
-   /*  @Column('boolean', {
-        default: false
+    @Column('timestamp', {
+        nullable: true
     })
-    allowMultipleSessions: boolean; */
+    blockedUntil?: Date;     // si está bloqueado, hasta cuándo
+
+    /*  @Column('text', {
+         nullable: true
+     })
+     deviceToken: string | null; */
+
+    /*  @Column('boolean', {
+         default: false
+     })
+     allowMultipleSessions: boolean; */
 
     @OneToMany(() => Session, session => session.user, { cascade: true })
     sessions: Session[];

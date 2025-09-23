@@ -521,7 +521,7 @@ export class AuthService {
         // Fetch settings from the database
         const settings = await this.appSettingsRepository.findOne({ where: { id: this.DEFAULT_SETTINGS_ID } });
         const maxAttempts = settings?.maxLoginAttempts || 3; // Default to 3 if not set
-        const blockDuration = settings?.defaultMaxSessionMinutes || 90; // Default to 90 seconds if not set
+        const blockDuration = settings?.loginBlockDurationMinutes || 90; // Default to 90 minutes if not set
 
         // Check if user is blocked due to too many failed attempts
         if (user.blockedUntil && user.blockedUntil > new Date()) {

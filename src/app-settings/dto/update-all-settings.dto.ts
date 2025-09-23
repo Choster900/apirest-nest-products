@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, Min, Max, isNumber } from 'class-validator';
 
 export class UpdateAllSettingsDto {
 
@@ -15,4 +15,13 @@ export class UpdateAllSettingsDto {
 
   @IsBoolean({ message: 'forceLogoutAll must be a boolean value' })
   forceLogoutAll?: boolean;
+
+  @IsNumber()
+  loginBlockDurationMinutes? : number
+
+  @IsNumber()
+  maxLoginAttempts?: number
+
+
+  
 }

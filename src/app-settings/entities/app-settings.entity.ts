@@ -14,6 +14,13 @@ export class AppSettings {
   @Column({ name: 'default_max_session_minutes', type: 'int', default: 60 })
   defaultMaxSessionMinutes: number;
 
+  @Column({ name: 'max_login_attempts', type: 'int', default: 5 })
+  maxLoginAttempts: number;
+
+  @Column({ name: 'login_block_duration_minutes', type: 'int', default: 1 })
+  loginBlockDurationMinutes: number;
+
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
   updatedAt: Date;
+
 }

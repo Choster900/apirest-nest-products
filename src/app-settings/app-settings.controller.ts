@@ -28,4 +28,6 @@ export class AppSettingsController {
   async logoutAllUsers(): Promise<AppSettings> {
     return this.appSettingsService.incrementGlobalSessionVersion();
   }
+
+  
 }

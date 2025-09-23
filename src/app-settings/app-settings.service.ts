@@ -15,7 +15,7 @@ export class AppSettingsService {
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   async get(): Promise<AppSettings> {
     try {
@@ -56,6 +56,8 @@ export class AppSettingsService {
             allowMultipleSessions: updateDto.allowMultipleSessions ?? true,
             globalSessionVersion: 0,
             defaultMaxSessionMinutes: updateDto.defaultMaxSessionMinutes ?? 60,
+            loginBlockDurationMinutes: updateDto.loginBlockDurationMinutes ?? 5,
+            maxLoginAttempts: updateDto.maxLoginAttempts ?? 3,
           });
         } else {
           // Update existing settings only with provided values
@@ -65,12 +67,18 @@ export class AppSettingsService {
           if (updateDto.defaultMaxSessionMinutes !== undefined) {
             settings.defaultMaxSessionMinutes = updateDto.defaultMaxSessionMinutes;
           }
+          if (updateDto.loginBlockDurationMinutes !== undefined) {
+            settings.loginBlockDurationMinutes = updateDto.loginBlockDurationMinutes;
+          }
+          if (updateDto.maxLoginAttempts !== undefined) {
+            settings.maxLoginAttempts = updateDto.maxLoginAttempts;
+          }
         }
 
         // Handle session state changes when allowMultipleSessions changes
-        if (updateDto.allowMultipleSessions !== undefined && 
-            currentAllowMultipleSessions !== updateDto.allowMultipleSessions) {
-          
+        if (updateDto.allowMultipleSessions !== undefined &&
+          currentAllowMultipleSessions !== updateDto.allowMultipleSessions) {
+
           if (updateDto.allowMultipleSessions === false) {
             // Disable multiple sessions - deactivate all sessions
             this.logger.log('Disabling multiple sessions - deactivating all user sessions');
@@ -80,17 +88,17 @@ export class AppSettingsService {
               { isActive: false }
             );
             this.logger.log(`Deactivated ${deactivatedSessions.affected || 0} sessions`);
-            
+
             // Increment session version to invalidate existing JWTs
             settings.globalSessionVersion += 1;
             this.logger.log('Global session version incremented due to multiple sessions disabled');
-            
+
           } else {
             // Enable multiple sessions - users can now have multiple active sessions
             this.logger.log('Multiple sessions enabled - users can now have multiple active sessions');
           }
         }
-        
+
         if (updateDto.forceLogoutAll) {
           this.logger.log('Force logout all users requested');
           // Increment global session version to invalidate all existing JWTs
@@ -105,7 +113,7 @@ export class AppSettingsService {
       this.logger.error('Error updating settings:', error);
       throw new InternalServerErrorException('Failed to update application settings');
     }
-  }  async incrementGlobalSessionVersion(): Promise<AppSettings> {
+  } async incrementGlobalSessionVersion(): Promise<AppSettings> {
     try {
       this.logger.log('Incrementing global session version');
       const settings = await this.get();

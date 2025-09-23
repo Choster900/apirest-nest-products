@@ -1,5 +1,6 @@
 import {
     BadRequestException,
+    ForbiddenException,
     Injectable,
     InternalServerErrorException,
     Logger,
@@ -517,27 +518,33 @@ export class AuthService {
      * Validates user credentials
      */
     private async validateUser(user: User, password: string): Promise<boolean> {
+        // Fetch settings from the database
+        const settings = await this.appSettingsRepository.findOne({ where: { id: this.DEFAULT_SETTINGS_ID } });
+        const maxAttempts = settings?.maxLoginAttempts || 3; // Default to 3 if not set
+        const blockDuration = settings?.defaultMaxSessionMinutes || 90; // Default to 90 seconds if not set
 
         // Check if user is blocked due to too many failed attempts
         if (user.blockedUntil && user.blockedUntil > new Date()) {
             const { minutes, seconds } = this.getTimeLeft(user.blockedUntil);
-            throw new UnauthorizedException(`Too many failed login attempts. Try again in ${minutes} minute(s) and ${seconds} second(s).`);
+            throw new ForbiddenException({
+                message: `Too many failed login attempts. Try again in ${minutes} minute(s) and ${seconds} second(s).`,
+                error: 'TooManyAttempts',
+                statusCode: 429,
+                retryAfter: seconds * 1000, // opcional, útil para front
+            });
         }
 
         if (!bcrypt.compareSync(password, user.password)) {
-
             user.failedAttempts = (user.failedAttempts || 0) + 1;
 
             console.log("Failed attempts:", user.failedAttempts);
-            if (user.failedAttempts >= 3) {
-                user.blockedUntil = new Date(Date.now() + 1.5 * 60 * 1000); // 1.5 minutos
+            if (user.failedAttempts >= maxAttempts) {
+                user.blockedUntil = new Date(Date.now() + blockDuration * 60 * 1000); // Block for the duration specified in settings (minutes)
                 user.failedAttempts = 0; // resetear para próximo intento
                 user.lastFailedAt = new Date();
             }
 
             await this.userRepository.save(user);
-
-            //throw new UnauthorizedException('Credentials are not valid (password)');
 
             return false;
         }

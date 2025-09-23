@@ -12,8 +12,8 @@ export class RefreshTokenGuard implements CanActivate {
         let refreshToken: string | undefined;
 
         // Intentar obtener refresh token desde cookie primero
-        if (request.cookies?.['secure_refresh_token']) {
-            refreshToken = request.cookies['secure_refresh_token'];
+        if (request.cookies?.['refresh_token']) {
+            refreshToken = request.cookies['refresh_token'];
         }
         // Si no hay cookie, intentar desde Authorization header
         else {

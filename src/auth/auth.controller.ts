@@ -121,7 +121,7 @@ export class AuthController {
         const result = await this.authService.login(loginUserDto);
 
         // Establecer cookie HttpOnly segura (token seguro)
-        this.setSecureCookie(response, result.token);
+        //this.setSecureCookie(response, result.token);
         // Establecer refresh token en cookie HttpOnly
         this.setRefreshCookie(response, result.refreshToken);
 
@@ -134,7 +134,7 @@ export class AuthController {
     }
 
     private setRefreshCookie(response: Response, refreshToken: string): void {
-        response.cookie('secure_refresh_token', refreshToken, {
+        response.cookie('refresh_token', refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
@@ -163,7 +163,7 @@ export class AuthController {
         const result = await this.authService.verifyJwtToken(token, deviceToken);
 
         // Actualizar cookies con los nuevos tokens generados
-        this.setSecureCookie(response, result.token);
+        //this.setSecureCookie(response, result.token);
         this.setRefreshCookie(response, result.refreshToken);
 
         return {
@@ -261,7 +261,7 @@ export class AuthController {
         const result = await this.authService.refreshTokens(userId, refreshTokenDto.deviceToken);
 
         // Establecer nuevas cookies
-        this.setSecureCookie(response, result.token);
+      //  this.setSecureCookie(response, result.token);
         this.setRefreshCookie(response, result.refreshToken);
 
         // Devolver nuevos tokens

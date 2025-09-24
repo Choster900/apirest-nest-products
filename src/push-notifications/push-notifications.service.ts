@@ -1,20 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import fetch, { Response } from 'node-fetch';
+import { HttpService } from '@nestjs/axios';
+import { AxiosResponse } from 'axios';
+import { firstValueFrom, timeout } from 'rxjs';
 import { CreatePushNotificationDto, NotificationPriority, NotificationSound } from './dto/create-push-notification.dto';
-import { 
-  ExpoNotificationMessage, 
-  ExpoNotificationResponse, 
-  PushNotificationResult, 
-  BatchNotificationResult 
+import {
+    ExpoNotificationMessage,
+    ExpoNotificationResponse,
+    ExpoNotificationErrorResponse,
+    PushNotificationResult,
+    BatchNotificationResult
 } from './interfaces/push-notification.interface';
 import { PushNotificationConfigService } from './config/push-notification-config.service';
-import { 
-  PushNotificationException,
-  DeviceNotRegisteredException,
-  InvalidCredentialsException,
-  MessageTooBigException,
-  RateLimitExceededException,
-  NetworkException
+import {
+    PushNotificationException,
+    DeviceNotRegisteredException,
+    InvalidCredentialsException,
+    MessageTooBigException,
+    RateLimitExceededException,
+    NetworkException
 } from './exceptions/push-notification.exception';
 
 /**
@@ -39,8 +42,9 @@ export class PushNotificationsService {
     private readonly logger = new Logger(PushNotificationsService.name);
 
     constructor(
-        private readonly configService: PushNotificationConfigService
-    ) {}
+        private readonly configService: PushNotificationConfigService,
+        private readonly httpService: HttpService
+    ) { }
 
     /**
      * Send a single push notification
@@ -50,7 +54,7 @@ export class PushNotificationsService {
      */
     async sendNotification(notificationDto: CreatePushNotificationDto): Promise<PushNotificationResult> {
         const startTime = Date.now();
-        
+
         try {
             // Validate notification data
             this.validateNotificationData(notificationDto);
@@ -94,7 +98,7 @@ export class PushNotificationsService {
      */
     async sendBatchNotifications(notifications: CreatePushNotificationDto[]): Promise<BatchNotificationResult> {
         const startTime = Date.now();
-        
+
         this.logger.log(`Sending batch of ${notifications.length} notifications`);
 
         const results = await Promise.allSettled(
@@ -148,7 +152,7 @@ export class PushNotificationsService {
      */
     private buildNotificationMessage(dto: CreatePushNotificationDto): ExpoNotificationMessage {
         const config = this.configService.getConfig();
-        
+
         return {
             to: dto.token,
             title: dto.title,
@@ -171,59 +175,59 @@ export class PushNotificationsService {
             return response;
         } catch (error) {
             const maxRetries = this.configService.getMaxRetries();
-            
+
             if (attempt < maxRetries && this.isRetryableError(error)) {
                 this.logger.warn(`Attempt ${attempt} failed, retrying...`, { error: error.message });
-                
+
                 await this.delay(this.configService.getRetryDelay() * attempt);
                 return this.sendWithRetry(message, attempt + 1);
             }
-            
+
             throw error;
         }
     }
 
     /**
-     * Make HTTP request to Expo API
+     * Make HTTP request to Expo API using HttpService
      */
     private async makeHttpRequest(message: ExpoNotificationMessage): Promise<ExpoNotificationResponse> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.configService.getTimeout());
-
         try {
-            const response: Response = await fetch(this.configService.getExpoApiUrl(), {
-                method: 'POST',
+            const requestConfig = {
                 headers: this.configService.getHeaders(),
-                body: JSON.stringify(message),
-                signal: controller.signal,
-            });
+                timeout: this.configService.getTimeout(),
+            };
 
-            clearTimeout(timeoutId);
+            const response$ = this.httpService.post<ExpoNotificationResponse>(
+                this.configService.getExpoApiUrl(),
+                message,
+                requestConfig
+            ).pipe(
+                timeout(this.configService.getTimeout())
+            );
 
-            if (!response.ok) {
-                throw new NetworkException(new Error(`HTTP ${response.status}: ${response.statusText}`));
-            }
+            const response: AxiosResponse<ExpoNotificationResponse> = await firstValueFrom(response$);
 
-            const responseData = await response.json() as ExpoNotificationResponse;
-            
             // Handle Expo API errors
-            if (responseData.data.status === 'error') {
-                this.handleExpoError(responseData);
+            if (response.data.data.status === 'error') {
+                this.handleExpoError(response.data);
             }
 
-            return responseData;
+            return response.data;
 
         } catch (error) {
-            clearTimeout(timeoutId);
-            
-            if (error.name === 'AbortError') {
+            if (error.name === 'TimeoutError' || error.code === 'ECONNABORTED') {
                 throw new NetworkException(new Error('Request timeout'));
             }
-            
+
+            if (error.response) {
+                // HTTP error response
+                throw new NetworkException(new Error(`HTTP ${error.response.status}: ${error.response.statusText}`));
+            }
+
             if (error instanceof PushNotificationException) {
                 throw error;
             }
-            
+
             throw new NetworkException(error);
         }
     }
@@ -234,7 +238,8 @@ export class PushNotificationsService {
     private handleExpoError(response: ExpoNotificationResponse): void {
         if (response.data.status !== 'error') return;
 
-        const errorType = response.data.details?.error;
+        const errorResponse = response as ExpoNotificationErrorResponse;
+        const errorType = errorResponse.data.details?.error;
 
         switch (errorType) {
             case 'DeviceNotRegistered':
@@ -246,7 +251,7 @@ export class PushNotificationsService {
             case 'MessageRateExceeded':
                 throw new RateLimitExceededException();
             default:
-                throw new PushNotificationException(response.data.message);
+                throw new PushNotificationException(errorResponse.data.message);
         }
     }
 
@@ -254,7 +259,6 @@ export class PushNotificationsService {
      * Process the API response
      */
     private processResponse(response: ExpoNotificationResponse, startTime: number): PushNotificationResult {
-        console.log(response)
         if (response.data.status === 'ok') {
             return {
                 success: true,
@@ -263,10 +267,11 @@ export class PushNotificationsService {
             };
         }
 
+        const errorResponse = response as ExpoNotificationErrorResponse;
         return {
             success: false,
-            error: response.data.message,
-            details: response.data.details,
+            error: errorResponse.data.message,
+            details: errorResponse.data.details,
             timestamp: new Date(),
         };
     }
@@ -277,9 +282,12 @@ export class PushNotificationsService {
     private isRetryableError(error: Error): boolean {
         // Retry on network errors, timeouts, and server errors
         return error instanceof NetworkException ||
-               error.name === 'AbortError' ||
-               error.message.includes('ECONNRESET') ||
-               error.message.includes('ETIMEDOUT');
+            error.name === 'TimeoutError' ||
+            error.message.includes('ECONNRESET') ||
+            error.message.includes('ETIMEDOUT') ||
+            error.message.includes('ECONNABORTED') ||
+            (error as any).code === 'ECONNABORTED' ||
+            (error as any).response?.status >= 500;
     }
 
     /**
@@ -309,11 +317,20 @@ export class PushNotificationsService {
                 body: 'Test message for health validation',
             };
 
-            await fetch(this.configService.getExpoApiUrl(), {
-                method: 'POST',
+            const requestConfig = {
                 headers: this.configService.getHeaders(),
-                body: JSON.stringify(testMessage),
-            });
+                timeout: 5000, // Shorter timeout for health check
+            };
+
+            await firstValueFrom(
+                this.httpService.post(
+                    this.configService.getExpoApiUrl(),
+                    testMessage,
+                    requestConfig
+                ).pipe(
+                    timeout(5000)
+                )
+            );
 
             return {
                 status: 'healthy',

@@ -13,4 +13,9 @@ export class PushNotificationsController {
   async send(@Body() body: CreatePushNotificationDto) {
     return this.pushNotificationsService.sendNotification(body);
   }
+
+  @Post('send-batch')
+  async sendBatch(@Body() body: CreatePushNotificationDto[]) {
+    return this.pushNotificationsService.sendBatchNotifications(body);
+  }
 }

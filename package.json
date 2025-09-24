@@ -36,6 +36,7 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.7",
+    "firebase-admin": "^13.5.0",
     "ioredis": "^5.7.0",
     "joi": "^17.13.3",
     "passport": "^0.7.0",

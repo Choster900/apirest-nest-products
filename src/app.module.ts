@@ -12,6 +12,7 @@ import { SeedModule } from './seed/seed.module';
 import { FilesModule } from './files/files.module';
 import { AuthModule } from './auth/auth.module';
 import { AppSettingsModule } from './app-settings/app-settings.module';
+import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 
 @Module({
     imports: [
@@ -55,7 +56,9 @@ import { AppSettingsModule } from './app-settings/app-settings.module';
             }
         }),
 
-        AuthModule
+        AuthModule,
+
+        PushNotificationsModule
     ],
     controllers: [],
     providers: [],

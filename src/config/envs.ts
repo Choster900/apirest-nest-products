@@ -18,6 +18,9 @@ interface EnvsVars {
     REDIS_HOST: string
     REDIS_PORT: number
     REDIS_PASSWORD: string
+    FIREBASE_PROJECT_ID: string
+    FIREBASE_CLIENT_EMAIL: string
+    FIREBASE_PRIVATE_KEY: string
 }
 
 const envSchema = joi.object<EnvsVars>({
@@ -33,7 +36,10 @@ const envSchema = joi.object<EnvsVars>({
     PUBLIC_KEY: joi.string().required(),
     REDIS_HOST: joi.string().default('localhost'),
     REDIS_PORT: joi.number().default(6379),
-    REDIS_PASSWORD: joi.string().optional().allow('')
+    REDIS_PASSWORD: joi.string().optional().allow(''),
+    FIREBASE_PROJECT_ID: joi.string().required(),
+    FIREBASE_CLIENT_EMAIL: joi.string().required(),
+    FIREBASE_PRIVATE_KEY: joi.string().required(),
 }).unknown(true)
 
 const { error, value: EnvsVars } = envSchema.validate({
@@ -58,4 +64,7 @@ export const envs = {
     REDIS_HOST: EnvsVars.REDIS_HOST,
     REDIS_PORT: EnvsVars.REDIS_PORT,
     REDIS_PASSWORD: EnvsVars.REDIS_PASSWORD,
+    FIREBASE_PROJECT_ID: EnvsVars.FIREBASE_PROJECT_ID,
+    FIREBASE_CLIENT_EMAIL: EnvsVars.FIREBASE_CLIENT_EMAIL,
+    FIREBASE_PRIVATE_KEY: EnvsVars.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
 }

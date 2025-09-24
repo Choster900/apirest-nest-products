@@ -21,6 +21,10 @@ interface EnvsVars {
     FIREBASE_PROJECT_ID: string
     FIREBASE_CLIENT_EMAIL: string
     FIREBASE_PRIVATE_KEY: string
+    EXPO_ACCESS_TOKEN?: string
+    PUSH_NOTIFICATION_TIMEOUT: number
+    PUSH_NOTIFICATION_MAX_RETRIES: number
+    PUSH_NOTIFICATION_RETRY_DELAY: number
 }
 
 const envSchema = joi.object<EnvsVars>({
@@ -40,6 +44,10 @@ const envSchema = joi.object<EnvsVars>({
     FIREBASE_PROJECT_ID: joi.string().required(),
     FIREBASE_CLIENT_EMAIL: joi.string().required(),
     FIREBASE_PRIVATE_KEY: joi.string().required(),
+    EXPO_ACCESS_TOKEN: joi.string().optional(),
+    PUSH_NOTIFICATION_TIMEOUT: joi.number().default(10000),
+    PUSH_NOTIFICATION_MAX_RETRIES: joi.number().default(3),
+    PUSH_NOTIFICATION_RETRY_DELAY: joi.number().default(1000),
 }).unknown(true)
 
 const { error, value: EnvsVars } = envSchema.validate({
@@ -67,4 +75,8 @@ export const envs = {
     FIREBASE_PROJECT_ID: EnvsVars.FIREBASE_PROJECT_ID,
     FIREBASE_CLIENT_EMAIL: EnvsVars.FIREBASE_CLIENT_EMAIL,
     FIREBASE_PRIVATE_KEY: EnvsVars.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    EXPO_ACCESS_TOKEN: EnvsVars.EXPO_ACCESS_TOKEN,
+    PUSH_NOTIFICATION_TIMEOUT: EnvsVars.PUSH_NOTIFICATION_TIMEOUT,
+    PUSH_NOTIFICATION_MAX_RETRIES: EnvsVars.PUSH_NOTIFICATION_MAX_RETRIES,
+    PUSH_NOTIFICATION_RETRY_DELAY: EnvsVars.PUSH_NOTIFICATION_RETRY_DELAY,
 }

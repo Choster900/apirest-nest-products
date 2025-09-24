@@ -1,6 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { PushNotificationsService } from './push-notifications.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { CreatePushNotificationDto } from './dto/create-push-notification.dto';
 
 @Controller('push-notifications')
 export class PushNotificationsController {
@@ -9,7 +10,7 @@ export class PushNotificationsController {
 
 
   @Post('send')
-  async send(@Body() body: CreateNotificationDto) {
-    return this.pushNotificationsService.sendNotification(body.token, body.title, body.message, body.data);
+  async send(@Body() body: CreatePushNotificationDto) {
+    return this.pushNotificationsService.sendNotification(body);
   }
 }

@@ -22,7 +22,7 @@ export interface FoundDeviceTokenInfo {
   sessionId: string;
   biometricEnabled: boolean;
   message: string;
-  pushToken?: string;
+  pushToken?: string | null;
   pushActive?: boolean;
 }
 

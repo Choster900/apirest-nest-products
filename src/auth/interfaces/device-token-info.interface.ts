@@ -3,6 +3,6 @@ export interface DeviceTokenInfo {
     isActive: boolean;
     sessionId: string;
     biometricEnabled: boolean;
-    pushToken?: string;
+    pushToken?: string | null;
     pushActive?: boolean;
 }

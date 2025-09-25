@@ -128,7 +128,6 @@ export class AuthService {
 
         // Find and validate user
         const user = await this.findUserByEmail(email);
-        console.log("user found:", user);
         const isValid = await this.validateUser(user, password);
         if (!isValid) {
             throw new UnauthorizedException('Invalid credentials');
@@ -715,7 +714,7 @@ export class AuthService {
                 isActive: session.isActive,
                 sessionId: session.id,
                 biometricEnabled: session.biometricEnabled,
-                pushToken: session.pushToken || undefined,
+                pushToken: session.pushToken || null,
                 pushActive: session.pushActive || undefined
             }));
     }
@@ -740,7 +739,7 @@ export class AuthService {
             isActive: deviceTokenInfo.isActive,
             sessionId: deviceTokenInfo.sessionId,
             biometricEnabled: deviceTokenInfo.biometricEnabled,
-            pushToken: deviceTokenInfo.pushToken,
+            pushToken: deviceTokenInfo.pushToken || null,
             pushActive: deviceTokenInfo.pushActive,
             message: 'Device token found successfully'
         };

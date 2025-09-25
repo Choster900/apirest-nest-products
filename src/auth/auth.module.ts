@@ -8,22 +8,33 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { User } from './entities/user.entity';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { Session } from './entities/sessions.entity';
+import { AppSettings } from '../app-settings/entities/app-settings.entity';
+import { AppSettingsModule } from '../app-settings/app-settings.module';
+import { AppSettingsService } from '../app-settings/app-settings.service';
+import { UserProcessor } from './user.processor';
+import { BullModule } from '@nestjs/bull';
 
 @Module({
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy],
+    providers: [AuthService, JwtStrategy, UserProcessor],
     imports: [
+        BullModule.registerQueue({
+            name: 'users', // 👈 este nombre debe coincidir con el de @InjectQueue('users')
+        }),
         ConfigModule,
-        TypeOrmModule.forFeature([User]),
+        AppSettingsModule,
+        TypeOrmModule.forFeature([User, Session, AppSettings]),
         PassportModule.register({ defaultStrategy: 'jwt' }),
         JwtModule.registerAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: (configService: ConfigService) => {
+            imports: [ConfigModule, AppSettingsModule],
+            inject: [ConfigService, AppSettingsService],
+            useFactory: async (configService: ConfigService, appSettingsService: AppSettingsService) => {
+                const appSettings = await appSettingsService.get();
                 return {
-                    secret: configService.get('JWT_SECRET'),
+                    secret: configService.get('JWT_PRIVATE_SECRET') || configService.get('JWT_SECRET'),
                     signOptions: {
-                        expiresIn: '2h'
+                        expiresIn: `${appSettings.defaultMaxSessionMinutes * 60}s` // convertir minutos a segundos
                     }
                 }
             }

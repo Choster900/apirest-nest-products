@@ -1,5 +1,5 @@
-import { IsString } from "class-validator";
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Session } from "./sessions.entity";
 
 
 @Entity('users')
@@ -30,20 +30,32 @@ export class User {
     })
     roles: string[]
 
-    @Column('bool', {
-        default: false
+    @Column('int', {
+        default: 0
     })
-    biometricEnabled: boolean;
+    failedAttempts: number;  // número de intentos fallidos
 
-    @Column('text', {
+    @Column('timestamp', {
         nullable: true
     })
-    deviceToken: string | null; // refresh token o identificador único del dispositivo
+    lastFailedAt: Date;      // última vez que falló
 
-    @Column('boolean', {
-        default: false
+    @Column('timestamp', {
+        nullable: true
     })
-    allowMultipleSessions: boolean;
+    blockedUntil?: Date;     // si está bloqueado, hasta cuándo
 
+    /*  @Column('text', {
+         nullable: true
+     })
+     deviceToken: string | null; */
+
+    /*  @Column('boolean', {
+         default: false
+     })
+     allowMultipleSessions: boolean; */
+
+    @OneToMany(() => Session, session => session.user, { cascade: true })
+    sessions: Session[];
 
 }

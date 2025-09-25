@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { BullModule } from '@nestjs/bull';
 import { join } from 'path';
 
 import { envs } from './config';
@@ -10,10 +11,27 @@ import { CommonModule } from './common/common.module';
 import { SeedModule } from './seed/seed.module';
 import { FilesModule } from './files/files.module';
 import { AuthModule } from './auth/auth.module';
+import { AppSettingsModule } from './app-settings/app-settings.module';
+import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 
 @Module({
     imports: [
         ConfigModule.forRoot(),
+
+        // Configuración de Bull para colas
+        BullModule.forRoot({
+            redis: {
+                host: envs.REDIS_HOST,
+                port: envs.REDIS_PORT,
+                password: envs.REDIS_PASSWORD || undefined,
+            },
+        }),
+
+        // Registrar cola de usuarios
+        BullModule.registerQueue({
+            name: 'users',
+        }),
+
         TypeOrmModule.forRoot({
             type: 'postgres',
             host: envs.POSTGRES_HOST,
@@ -28,6 +46,7 @@ import { AuthModule } from './auth/auth.module';
         CommonModule,
         SeedModule,
         FilesModule,
+        AppSettingsModule,
 
         // Configurar carpeta pública
         ServeStaticModule.forRoot({
@@ -37,7 +56,9 @@ import { AuthModule } from './auth/auth.module';
             }
         }),
 
-        AuthModule
+        AuthModule,
+
+        PushNotificationsModule
     ],
     controllers: [],
     providers: [],

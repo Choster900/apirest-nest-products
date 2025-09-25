@@ -25,7 +25,7 @@ export class AuthController {
     @UseGuards(PublicKeyGuard)
     async create(@Body() createUserDto: CreateUserDto) {
         // Validación previa: verificar si el email ya existe
-        const existingUser = await this.authService.findUserByEmailForValidation(createUserDto.email);
+        const existingUser = await this.authService.findUserByEmailOrIdForValidation(createUserDto.email);
         if (existingUser) {
             throw new BadRequestException(`User with email ${createUserDto.email} already exists`);
         }

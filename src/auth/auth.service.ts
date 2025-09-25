@@ -54,11 +54,20 @@ export class AuthService {
     /**
      * Finds user by email for validation purposes (doesn't throw if not found)
      */
-    async findUserByEmailForValidation(email: string): Promise<User | null> {
-        return await this.userRepository.findOne({
-            where: { email },
+    async findUserByEmailOrIdForValidation(identifier: string): Promise<User | null> {
+        // Try to find by email first
+        let user = await this.userRepository.findOne({
+            where: { email: identifier },
             select: ['id', 'email']
         });
+        if (!user) {
+            // If not found by email, try by id
+            user = await this.userRepository.findOne({
+                where: { id: identifier },
+                select: ['id', 'email']
+            });
+        }
+        return user;
     }
 
     /**
@@ -534,7 +543,7 @@ export class AuthService {
     /**
      * Finds user by ID
      */
-    private async findUserById(userId: string): Promise<User> {
+    public async findUserById(userId: string): Promise<User> {
         const user = await this.userRepository.findOne({
             where: { id: userId },
             select: {

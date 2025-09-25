@@ -27,4 +27,10 @@ export class PushNotificationsController {
   async sendv2(@Body() body: CreateNotificationDto) {
     return this.notificationsService.sendNotification(body);
   }
+
+  //send-v2-by-user
+  @Post('send-v2-by-user')
+  async sendv2ByUser(@Body() body: { userId: string; title: string; message: string; data?: Record<string, string> }) {
+    return this.notificationsService.sendNotificationByUser(body);
+  }
 }

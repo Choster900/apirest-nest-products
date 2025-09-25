@@ -40,6 +40,6 @@ import { BullModule } from '@nestjs/bull';
             }
         })
     ],
-    exports: [TypeOrmModule, JwtStrategy, PassportModule, JwtModule]
+    exports: [TypeOrmModule, JwtStrategy, PassportModule, JwtModule, AuthService]
 })
 export class AuthModule { }

@@ -3,7 +3,6 @@ import { User } from "./user.entity";
 
 @Entity('sessions')
 export class Session {
-
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
@@ -24,7 +23,7 @@ export class Session {
     deviceToken: string | null; // para login biométrico
 
     @Column('boolean', { default: false })
-    biometricEnabled: boolean; // biometría habilitada para este dispositivo específico
+    biometricEnabled: boolean;
 
     @Column('boolean', { default: true })
     isActive: boolean;
@@ -37,4 +36,16 @@ export class Session {
 
     @Column('text', { nullable: true })
     deviceInfo: string | null; // ej: "iPhone 13 iOS 17" o "Honor X7b Android 14"
+
+    // 🔔 Expo push token para notificaciones
+    @Column('text', { nullable: true })
+    pushToken: string | null;
+
+    // 🔄 Si este token debe recibir notificaciones globales
+    @Column('boolean', { default: true })
+    allowGeneralNotifications: boolean;
+
+    // ✅ Estado del token para notificaciones personales (login/logout)
+    @Column('boolean', { default: true })
+    pushActive: boolean;
 }

@@ -705,7 +705,7 @@ export class AuthService {
     private async getAllDeviceTokens(userId: string): Promise<DeviceTokenInfo[]> {
         const sessions = await this.sessionRepository.find({
             where: { userId },
-            select: ['id', 'deviceToken', 'isActive', 'biometricEnabled']
+            select: ['id', 'deviceToken', 'isActive', 'biometricEnabled', 'pushToken', 'pushActive']
         });
 
         return sessions
@@ -714,7 +714,9 @@ export class AuthService {
                 deviceToken: session.deviceToken!,
                 isActive: session.isActive,
                 sessionId: session.id,
-                biometricEnabled: session.biometricEnabled
+                biometricEnabled: session.biometricEnabled,
+                pushToken: session.pushToken || undefined,
+                pushActive: session.pushActive || undefined
             }));
     }
 
@@ -738,6 +740,8 @@ export class AuthService {
             isActive: deviceTokenInfo.isActive,
             sessionId: deviceTokenInfo.sessionId,
             biometricEnabled: deviceTokenInfo.biometricEnabled,
+            pushToken: deviceTokenInfo.pushToken,
+            pushActive: deviceTokenInfo.pushActive,
             message: 'Device token found successfully'
         };
     }

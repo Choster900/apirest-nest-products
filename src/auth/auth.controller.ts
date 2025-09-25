@@ -125,9 +125,9 @@ export class AuthController {
         // Establecer refresh token en cookie HttpOnly
         this.setRefreshCookie(response, result.refreshToken);
 
-        // Devolver datos del usuario CON ambos tokens en la respuesta
+        const { refreshToken, ...rest } = result;
         return {
-            ...result,
+            ...rest,
             secureTokenSet: true, // Indicador de que la cookie segura fue establecida
             refreshTokenSet: true // Indicador de que la cookie refresh fue establecida
         };

@@ -22,6 +22,8 @@ export interface FoundDeviceTokenInfo {
   sessionId: string;
   biometricEnabled: boolean;
   message: string;
+  pushToken?: string;
+  pushActive?: boolean;
 }
 
 /**

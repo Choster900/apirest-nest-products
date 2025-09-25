@@ -1,8 +1,7 @@
 // Main service and module exports
 export { PushNotificationsService } from './push-notifications.service';
 export { PushNotificationsModule } from './push-notifications.module';
-export { PushNotificationsController } from './push-notifications.controller';
-
+export { NotificationsService } from './notifications.service';
 // Configuration exports
 export { PushNotificationConfigService } from './config/push-notification-config.service';
 

@@ -225,6 +225,59 @@ export class AuthService {
         }
     }
 
+    async updatePushToken(user: User, deviceToken: string, pushToken: string): Promise<DeviceTokenResponse> {
+        try {
+            const session = await this.sessionRepository.findOne({
+                where: { userId: user.id, deviceToken }
+            });
+
+            if (!session) {
+                throw new BadRequestException('Device token not found for this user. Make sure the device token is registered.');
+            }
+
+            session.pushToken = pushToken;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken,
+                message: 'Push token updated successfully',
+                deviceStatus: 'registered'
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    /**
+     * Deactivates push notifications for a specific session
+     */
+    async deactivatePushForSession(deviceToken: string) {
+        try {
+            const session = await this.sessionRepository.findOne({ where: { deviceToken } });
+
+            if (!session) {
+                throw new NotFoundException('Session not found');
+            }
+
+            session.pushActive = false;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken: session.deviceToken || null,
+                message: 'Push notifications deactivated for this session',
+                deviceStatus: session.isActive ? 'registered' : 'inactive'
+            };
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
     /**
      * Checks if a device token is the main device for the user
      */

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, UseGuards, Headers, BadRequestException, NotFoundException, UnauthorizedException, Query, Res, Req, Param } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+// import { InjectQueue } from '@nestjs/bull'; // TEMPORALMENTE DESHABILITADO
+// import { Queue } from 'bull'; // TEMPORALMENTE DESHABILITADO
 import { AuthService } from './auth.service';
 import { CreateUserDto, LoginUserDto, LoginDeviceTokenDto, SaveDeviceTokenDto, AllowMultipleSessionsDto, EnableBiometricsDto, DisableBiometricsDto, ToggleBiometricsDto, RefreshTokenDto, CheckMainDeviceDto } from './dto';
 import { Auth, GetUser } from './decorators';
@@ -13,7 +13,7 @@ import { v4 as uuid } from 'uuid';
 export class AuthController {
     constructor(
         private readonly authService: AuthService,
-        @InjectQueue('users') private usersQueue: Queue
+        // @InjectQueue('users') private usersQueue: Queue // TEMPORALMENTE DESHABILITADO
     ) { }
 
     @Get('get-public-key')
@@ -30,6 +30,16 @@ export class AuthController {
             throw new BadRequestException(`User with email ${createUserDto.email} already exists`);
         }
 
+        // TEMPORALMENTE: Procesar directamente sin queue
+        const result = await this.authService.create(createUserDto);
+        
+        return {
+            message: 'User registration completed successfully',
+            status: 'completed',
+            user: result
+        };
+
+        /* CÓDIGO CON QUEUE COMENTADO TEMPORALMENTE
         const jobId = uuid();
 
         // Agregar el job a la cola
@@ -53,59 +63,20 @@ export class AuthController {
             estimatedProcessingTime: '2-5 seconds',
             note: 'Check job status using /auth/job-status/:jobId endpoint'
         };
+        */
     }
 
+    /* TEMPORALMENTE DESHABILITADO - MÉTODO QUE REQUIERE QUEUE
     @Get('job-status/:jobId')
     @UseGuards(PublicKeyGuard)
     async getJobStatus(@Param('jobId') jobId: string) {
         try {
             // Buscar el job por ID
             const job = await this.usersQueue.getJob(jobId);
-
             if (!job) {
                 throw new NotFoundException(`Job with ID ${jobId} not found`);
             }
-
-            const state = await job.getState();
-            const progress = job.progress();
-
-            // Preparar respuesta base
-            const response: any = {
-                jobId,
-                status: state,
-                progress,
-                createdAt: new Date(job.timestamp).toISOString(),
-            };
-
-            // Agregar información específica según el estado
-            switch (state) {
-                case 'completed':
-                    response.result = job.returnvalue;
-                    response.completedAt = job.finishedOn ? new Date(job.finishedOn).toISOString() : null;
-                    response.success = true;
-                    break;
-                case 'failed':
-                    response.error = job.failedReason;
-                    response.failedAt = job.finishedOn ? new Date(job.finishedOn).toISOString() : null;
-                    response.attempts = job.attemptsMade;
-                    response.success = false;
-                    response.statusCode = 400; // Indicar que es un error de cliente
-                    break;
-                case 'waiting':
-                    response.message = 'Job is waiting to be processed';
-                    response.success = null; // Aún no se sabe
-                    break;
-                case 'active':
-                    response.message = 'Job is currently being processed';
-                    response.startedAt = job.processedOn ? new Date(job.processedOn).toISOString() : null;
-                    response.success = null; // Aún no se sabe
-                    break;
-                case 'delayed':
-                    response.message = 'Job is delayed';
-                    response.success = null; // Aún no se sabe
-                    break;
-            }
-
+            // ... resto del código ...
             return response;
         } catch (error) {
             if (error instanceof NotFoundException) {
@@ -114,6 +85,7 @@ export class AuthController {
             throw new BadRequestException(`Error checking job status: ${error.message}`);
         }
     }
+    */
 
     @Post('login')
     @UseGuards(PublicKeyGuard)

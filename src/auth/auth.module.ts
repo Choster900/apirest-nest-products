@@ -12,16 +12,14 @@ import { Session } from './entities/sessions.entity';
 import { AppSettings } from '../app-settings/entities/app-settings.entity';
 import { AppSettingsModule } from '../app-settings/app-settings.module';
 import { AppSettingsService } from '../app-settings/app-settings.service';
-import { UserProcessor } from './user.processor';
-import { BullModule } from '@nestjs/bull';
+// import { UserProcessor } from './user.processor'; // TEMPORALMENTE DESHABILITADO
+// import { BullModule } from '@nestjs/bull'; // TEMPORALMENTE DESHABILITADO
 
 @Module({
     controllers: [AuthController],
-    providers: [AuthService, JwtStrategy, UserProcessor],
+    providers: [AuthService, JwtStrategy], // UserProcessor temporalmente removido
     imports: [
-        BullModule.registerQueue({
-            name: 'users', // 👈 este nombre debe coincidir con el de @InjectQueue('users')
-        }),
+        // BullModule.registerQueue({ name: 'users' }), // TEMPORALMENTE DESHABILITADO
         ConfigModule,
         AppSettingsModule,
         TypeOrmModule.forFeature([User, Session, AppSettings]),

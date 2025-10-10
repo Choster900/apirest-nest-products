@@ -54,11 +54,30 @@ export class AuthService {
     /**
      * Finds user by email for validation purposes (doesn't throw if not found)
      */
-    async findUserByEmailForValidation(email: string): Promise<User | null> {
-        return await this.userRepository.findOne({
-            where: { email },
-            select: ['id', 'email']
-        });
+    async findUserByEmailOrIdForValidation(identifier: string): Promise<User | null> {
+        // Check if identifier is an email (contains @) or could be a UUID
+        const isEmail = identifier.includes('@');
+        
+        if (isEmail) {
+            // If it's an email, only search by email
+            return await this.userRepository.findOne({
+                where: { email: identifier },
+                select: ['id', 'email']
+            });
+        } else {
+            // If it's not an email, validate UUID format before searching by ID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            
+            if (uuidRegex.test(identifier)) {
+                return await this.userRepository.findOne({
+                    where: { id: identifier },
+                    select: ['id', 'email']
+                });
+            }
+            
+            // If it's neither a valid email nor UUID, return null
+            return null;
+        }
     }
 
     /**

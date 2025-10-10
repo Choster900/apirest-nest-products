@@ -54,11 +54,20 @@ export class AuthService {
     /**
      * Finds user by email for validation purposes (doesn't throw if not found)
      */
-    async findUserByEmailForValidation(email: string): Promise<User | null> {
-        return await this.userRepository.findOne({
-            where: { email },
+    async findUserByEmailOrIdForValidation(identifier: string): Promise<User | null> {
+        // Try to find by email first
+        let user = await this.userRepository.findOne({
+            where: { email: identifier },
             select: ['id', 'email']
         });
+        if (!user) {
+            // If not found by email, try by id
+            user = await this.userRepository.findOne({
+                where: { id: identifier },
+                select: ['id', 'email']
+            });
+        }
+        return user;
     }
 
     /**
@@ -128,7 +137,6 @@ export class AuthService {
 
         // Find and validate user
         const user = await this.findUserByEmail(email);
-        console.log("user found:", user);
         const isValid = await this.validateUser(user, password);
         if (!isValid) {
             throw new UnauthorizedException('Invalid credentials');
@@ -220,6 +228,59 @@ export class AuthService {
             };
         } catch (error) {
             if (error instanceof BadRequestException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    async updatePushToken(user: User, deviceToken: string, pushToken: string): Promise<DeviceTokenResponse> {
+        try {
+            const session = await this.sessionRepository.findOne({
+                where: { userId: user.id, deviceToken }
+            });
+
+            if (!session) {
+                throw new BadRequestException('Device token not found for this user. Make sure the device token is registered.');
+            }
+
+            session.pushToken = pushToken;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken,
+                message: 'Push token updated successfully',
+                deviceStatus: 'registered'
+            };
+        } catch (error) {
+            if (error instanceof BadRequestException) {
+                throw error;
+            }
+            this.handleDbExceptions(error);
+        }
+    }
+
+    /**
+     * Deactivates push notifications for a specific session
+     */
+    async deactivatePushForSession(deviceToken: string) {
+        try {
+            const session = await this.sessionRepository.findOne({ where: { deviceToken } });
+
+            if (!session) {
+                throw new NotFoundException('Session not found');
+            }
+
+            session.pushActive = false;
+            await this.sessionRepository.save(session);
+
+            return {
+                deviceToken: session.deviceToken || null,
+                message: 'Push notifications deactivated for this session',
+                deviceStatus: session.isActive ? 'registered' : 'inactive'
+            };
+        } catch (error) {
+            if (error instanceof NotFoundException) {
                 throw error;
             }
             this.handleDbExceptions(error);
@@ -482,7 +543,7 @@ export class AuthService {
     /**
      * Finds user by ID
      */
-    private async findUserById(userId: string): Promise<User> {
+    public async findUserById(userId: string): Promise<User> {
         const user = await this.userRepository.findOne({
             where: { id: userId },
             select: {
@@ -705,7 +766,7 @@ export class AuthService {
     private async getAllDeviceTokens(userId: string): Promise<DeviceTokenInfo[]> {
         const sessions = await this.sessionRepository.find({
             where: { userId },
-            select: ['id', 'deviceToken', 'isActive', 'biometricEnabled']
+            select: ['id', 'deviceToken', 'isActive', 'biometricEnabled', 'pushToken', 'pushActive']
         });
 
         return sessions
@@ -714,7 +775,9 @@ export class AuthService {
                 deviceToken: session.deviceToken!,
                 isActive: session.isActive,
                 sessionId: session.id,
-                biometricEnabled: session.biometricEnabled
+                biometricEnabled: session.biometricEnabled,
+                pushToken: session.pushToken || null,
+                pushActive: session.pushActive || undefined
             }));
     }
 
@@ -738,6 +801,8 @@ export class AuthService {
             isActive: deviceTokenInfo.isActive,
             sessionId: deviceTokenInfo.sessionId,
             biometricEnabled: deviceTokenInfo.biometricEnabled,
+            pushToken: deviceTokenInfo.pushToken || null,
+            pushActive: deviceTokenInfo.pushActive,
             message: 'Device token found successfully'
         };
     }

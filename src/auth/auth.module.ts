@@ -38,6 +38,6 @@ import { AppSettingsService } from '../app-settings/app-settings.service';
             }
         })
     ],
-    exports: [TypeOrmModule, JwtStrategy, PassportModule, JwtModule]
+    exports: [TypeOrmModule, JwtStrategy, PassportModule, JwtModule, AuthService]
 })
 export class AuthModule { }

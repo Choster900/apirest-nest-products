@@ -47,12 +47,12 @@ export class AuthController {
             userData: createUserDto,
             jobId: jobId
         }, {
-            attempts: 3, 
+            attempts: 3,
             backoff: {
                 type: 'exponential',
-                delay: 2000, 
+                delay: 2000,
             },
-            removeOnComplete: 10, 
+            removeOnComplete: 10,
             removeOnFail: 5,
         });
 
@@ -97,9 +97,9 @@ export class AuthController {
         // Establecer refresh token en cookie HttpOnly
         this.setRefreshCookie(response, result.refreshToken);
 
-        // Devolver datos del usuario CON ambos tokens en la respuesta
+        const { refreshToken, ...rest } = result;
         return {
-            ...result,
+            ...rest,
             secureTokenSet: true, // Indicador de que la cookie segura fue establecida
             refreshTokenSet: true // Indicador de que la cookie refresh fue establecida
         };
@@ -233,7 +233,7 @@ export class AuthController {
         const result = await this.authService.refreshTokens(userId, refreshTokenDto.deviceToken);
 
         // Establecer nuevas cookies
-      //  this.setSecureCookie(response, result.token);
+        //  this.setSecureCookie(response, result.token);
         this.setRefreshCookie(response, result.refreshToken);
 
         // Devolver nuevos tokens
@@ -249,6 +249,12 @@ export class AuthController {
     @UseGuards(FlexibleAuthGuard)
     async saveDeviceToken(@GetUser() user: User, @Body() saveDeviceTokenDto: SaveDeviceTokenDto) {
         return this.authService.saveDeviceToken(user, saveDeviceTokenDto.deviceToken);
+    }
+
+    @Post('save-fcm-token')
+    @UseGuards(FlexibleAuthGuard)
+    async saveFcmToken(@GetUser() user: User, @Body() { deviceToken, fcmToken }: { deviceToken: string; fcmToken: string }) {
+        return this.authService.updatePushToken(user, deviceToken, fcmToken);
     }
 
     @Post('toggle-biometrics')

@@ -27,10 +27,6 @@ import {
 } from './interfaces';
 import { v4 as uuid } from 'uuid';
 import { envs } from '../config';
-
-/**
- * Authentication service handling user registration, login, token management, and device sessions
- */
 @Injectable()
 export class AuthService {
     private readonly logger = new Logger('AuthService');
@@ -47,25 +43,15 @@ export class AuthService {
         private readonly jwtService: JwtService
     ) { }
 
-    // ==============================
-    // PUBLIC AUTH METHODS
-    // ==============================
-
-    /**
-     * Finds user by email for validation purposes (doesn't throw if not found)
-     */
     async findUserByEmailOrIdForValidation(identifier: string): Promise<User | null> {
-        // Check if identifier is an email (contains @) or could be a UUID
         const isEmail = identifier.includes('@');
         
         if (isEmail) {
-            // If it's an email, only search by email
             return await this.userRepository.findOne({
                 where: { email: identifier },
                 select: ['id', 'email']
             });
         } else {
-            // If it's not an email, validate UUID format before searching by ID
             const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
             
             if (uuidRegex.test(identifier)) {
@@ -74,20 +60,15 @@ export class AuthService {
                     select: ['id', 'email']
                 });
             }
-            
-            // If it's neither a valid email nor UUID, return null
             return null;
         }
     }
 
-    /**
-     * Generates a public token for authentication access
-     */
     async generatePublicToken(): Promise<{ token: string; expiresIn: string }> {
         const payload = {
             isPublicKey: true,
             iat: Math.floor(Date.now() / 1000),
-            exp: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60) // 1 año
+            exp: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60)
         };
 
         const token = this.jwtService.sign(payload, {
@@ -100,27 +81,14 @@ export class AuthService {
         };
     }
 
-    /**
-     * Refreshes access token using a valid refresh token
-     */
     async refreshTokens(userId: string, deviceToken?: string): Promise<AuthResponse> {
         const user = await this.findUserById(userId);
         this.validateUserStatus(user);
-
-        // Validar versión de sesión actual
         const appSettings = await this.getAppSettings();
-        // No necesitamos validar sessionVersion aquí porque el refresh token ya fue validado por el guard
-
-        // Get device token information if provided
         const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
-
-        // Generar nuevos tokens
         return this.buildAuthResponse(user, foundDeviceToken);
     }
 
-    /**
-     * Creates a new user account
-     */
     async create(createUserDto: CreateUserDto): Promise<AuthResponse> {
         try {
             const { password, ...userData } = createUserDto;
@@ -139,28 +107,18 @@ export class AuthService {
         }
     }
 
-    /**
-     * Authenticates user with email/password and optional device token
-     */
     async login(loginUserDto: LoginUserDto): Promise<AuthResponse> {
         const { password, email, deviceToken } = loginUserDto;
-
-        // Find and validate user
         const user = await this.findUserByEmail(email);
         const isValid = await this.validateUser(user, password);
         if (!isValid) {
             throw new UnauthorizedException('Invalid credentials');
         }
-
-        // Get device token information if provided
         const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
 
         return this.buildAuthResponse(user, foundDeviceToken);
     }
 
-    /**
-     * Verifies JWT token and optionally returns device token info
-     */
     async verifyJwtToken(token: string, deviceToken?: string): Promise<AuthResponse> {
         try {
             this.validateTokenFormat(token);
@@ -178,16 +136,12 @@ export class AuthService {
         }
     }
 
-    /**
-     * Authenticates user using device token (biometric login)
-     */
     async loginWithDeviceToken(deviceToken: string): Promise<AuthResponse> {
         try {
             const session = await this.findActiveSession(deviceToken);
             const user = session.user;
 
             this.validateUserStatus(user);
-            //this.validateBiometricEnabled(session);
 
             const foundDeviceToken = await this.getFoundDeviceToken(user.id, deviceToken);
 
@@ -200,13 +154,6 @@ export class AuthService {
         }
     }
 
-    // ==============================
-    // DEVICE TOKEN MANAGEMENT
-    // ==============================
-
-    /**
-     * Generates a new device token
-     */
     async generateDeviceToken(): Promise<DeviceTokenResponse> {
         try {
             const deviceToken = uuid();
@@ -220,9 +167,6 @@ export class AuthService {
         }
     }
 
-    /**
-     * Saves a device token for a user
-     */
     async saveDeviceToken(user: User, deviceToken: string): Promise<DeviceTokenResponse> {
         try {
             await this.validateDeviceTokenUniqueness(deviceToken, user.id);
@@ -270,9 +214,6 @@ export class AuthService {
         }
     }
 
-    /**
-     * Deactivates push notifications for a specific session
-     */
     async deactivatePushForSession(deviceToken: string) {
         try {
             const session = await this.sessionRepository.findOne({ where: { deviceToken } });
@@ -297,12 +238,8 @@ export class AuthService {
         }
     }
 
-    /**
-     * Checks if a device token is the main device for the user
-     */
     async checkMainDevice(user: User, deviceToken: string): Promise<MainDeviceResponse> {
         try {
-            // Find the session for this device token
             const session = await this.sessionRepository.findOne({
                 where: { userId: user.id, deviceToken }
             });
@@ -317,7 +254,6 @@ export class AuthService {
                 };
             }
 
-            // Check if the device token session is inactive
             if (!session.isActive) {
                 return {
                     deviceToken,
@@ -328,10 +264,9 @@ export class AuthService {
                 };
             }
 
-            // Get all active sessions for the user
             const activeSessions = await this.sessionRepository.find({
                 where: { userId: user.id, isActive: true },
-                order: { createdAt: 'ASC' } // Order by creation date to find the first (main) device
+                order: { createdAt: 'ASC' }
             });
 
             if (activeSessions.length === 0) {
@@ -344,7 +279,6 @@ export class AuthService {
                 };
             }
 
-            // The main device is the first active session created
             const mainDeviceSession = activeSessions[0];
             const isMainDevice = mainDeviceSession.deviceToken === deviceToken;
 
@@ -366,19 +300,13 @@ export class AuthService {
                 };
             }
         } catch (error) {
-            // Solo lanzar errores de base de datos, no errores de lógica de negocio
             this.handleDbExceptions(error);
         }
     }
 
-    /**
-     * Sets a device as the main device, deactivating all others
-     */
     async setMainDevice(user: User, deviceToken: string): Promise<MainDeviceResponse> {
         try {
-
             let wasActive = false;
-            // Find the session for this device token
             const session = await this.sessionRepository.findOne({
                 where: { userId: user.id, deviceToken }
             });
@@ -393,16 +321,13 @@ export class AuthService {
                 };
             }
 
-            // Check if the device token session is inactive
             wasActive = session.isActive;
 
-            // Deactivate all other devices for this user
             await this.sessionRepository.update(
                 { userId: user.id, deviceToken: Not(deviceToken) },
                 { isActive: false }
             );
 
-            // Activate this device as main device
             session.isActive = true;
             await this.sessionRepository.save(session);
 
@@ -418,13 +343,6 @@ export class AuthService {
         }
     }
 
-    // ==============================
-    // BIOMETRIC MANAGEMENT
-    // ==============================
-
-    /**
-     * Enables biometrics for a specific device
-     */
     async enableBiometrics(user: User, deviceToken: string): Promise<BiometricResponse> {
         try {
             const session = await this.findUserSession(user.id, deviceToken);
@@ -456,9 +374,6 @@ export class AuthService {
         }
     }
 
-    /**
-     * Disables biometrics for specific device or all devices
-     */
     async disableBiometrics(userId: string, deviceToken?: string): Promise<BiometricResponse> {
         try {
             const user = await this.findUserById(userId);
@@ -473,13 +388,6 @@ export class AuthService {
         }
     }
 
-    // ==============================
-    // LOGOUT OPERATIONS
-    // ==============================
-
-    /**
-     * Logs out all devices globally
-     */
     async logoutAllDevices(): Promise<LogoutResponse> {
         try {
             await this.incrementGlobalSessionVersion();
@@ -497,9 +405,6 @@ export class AuthService {
         }
     }
 
-    /**
-     * Logs out all devices for a specific user
-     */
     async logoutAllDevicesForUser(userId: string): Promise<LogoutResponse> {
         try {
             const user = await this.findUserById(userId);
@@ -520,13 +425,6 @@ export class AuthService {
         }
     }
 
-    // ==============================
-    // PRIVATE HELPER METHODS - USER OPERATIONS
-    // ==============================
-
-    /**
-     * Finds user by email with password for authentication
-     */
     private async findUserByEmail(email: string): Promise<User> {
         const user = await this.userRepository.findOne({
             where: { email },
@@ -550,9 +448,6 @@ export class AuthService {
         return user;
     }
 
-    /**
-     * Finds user by ID
-     */
     public async findUserById(userId: string): Promise<User> {
         const user = await this.userRepository.findOne({
             where: { id: userId },
@@ -585,23 +480,19 @@ export class AuthService {
 
         return { minutes, seconds };
     }
-    /**
-     * Validates user credentials
-     */
-    private async validateUser(user: User, password: string): Promise<boolean> {
-        // Fetch settings from the database
-        const settings = await this.appSettingsRepository.findOne({ where: { id: this.DEFAULT_SETTINGS_ID } });
-        const maxAttempts = settings?.maxLoginAttempts || 3; // Default to 3 if not set
-        const blockDuration = settings?.loginBlockDurationMinutes || 90; // Default to 90 minutes if not set
 
-        // Check if user is blocked due to too many failed attempts
+    private async validateUser(user: User, password: string): Promise<boolean> {
+        const settings = await this.appSettingsRepository.findOne({ where: { id: this.DEFAULT_SETTINGS_ID } });
+        const maxAttempts = settings?.maxLoginAttempts || 3;
+        const blockDuration = settings?.loginBlockDurationMinutes || 90;
+
         if (user.blockedUntil && user.blockedUntil > new Date()) {
             const { minutes, seconds } = this.getTimeLeft(user.blockedUntil);
             throw new ForbiddenException({
                 message: `Too many failed login attempts. Try again in ${minutes} minute(s) and ${seconds} second(s).`,
                 error: 'TooManyAttempts',
                 statusCode: 429,
-                retryAfter: seconds * 1000, // opcional, útil para front
+                retryAfter: seconds * 1000,
             });
         }
 
@@ -610,8 +501,8 @@ export class AuthService {
 
             console.log("Failed attempts:", user.failedAttempts);
             if (user.failedAttempts >= maxAttempts) {
-                user.blockedUntil = new Date(Date.now() + blockDuration * 60 * 1000); // Block for the duration specified in settings (minutes)
-                user.failedAttempts = 0; // resetear para próximo intento
+                user.blockedUntil = new Date(Date.now() + blockDuration * 60 * 1000);
+                user.failedAttempts = 0;
                 user.lastFailedAt = new Date();
             }
 
@@ -620,7 +511,6 @@ export class AuthService {
             return false;
         }
 
-        // Reset failed attempts on successful login
         user.failedAttempts = 0;
         user.blockedUntil = undefined;
         await this.userRepository.save(user);
@@ -630,31 +520,18 @@ export class AuthService {
         return true
     }
 
-    /**
-     * Validates user status
-     */
     private validateUserStatus(user: User): void {
         if (!user.isActive) {
             throw new UnauthorizedException('User is inactive, talk with an admin');
         }
     }
 
-    // ==============================
-    // PRIVATE HELPER METHODS - TOKEN OPERATIONS
-    // ==============================
-
-    /**
-     * Validates token format
-     */
     private validateTokenFormat(token: string): void {
         if (!token || typeof token !== 'string' || token.trim().length === 0) {
             throw new UnauthorizedException('Invalid token format');
         }
     }
 
-    /**
-     * Decodes and validates JWT token
-     */
     private decodeAndValidateToken(token: string): JwtPayload {
         const payload = this.jwtService.verify(token) as JwtPayload;
 
@@ -665,9 +542,6 @@ export class AuthService {
         return payload;
     }
 
-    /**
-     * Validates token version against global session version
-     */
     private async validateTokenVersion(payload: JwtPayload): Promise<void> {
         const appSettings = await this.getAppSettings();
         if (payload.sessionVersion !== undefined &&
@@ -676,9 +550,6 @@ export class AuthService {
         }
     }
 
-    /**
-     * Generates JWT token with current session version
-     */
     private async getJwtToken(payload: JwtPayload): Promise<string> {
         const appSettings = await this.getAppSettings();
         const tokenPayload: JwtPayload = {
@@ -686,7 +557,6 @@ export class AuthService {
             sessionVersion: appSettings.globalSessionVersion
         };
 
-        // Use the configured session duration from app settings
         const expiresIn = `${appSettings.defaultMaxSessionMinutes}m`;
 
         return this.jwtService.sign(tokenPayload, {
@@ -694,16 +564,9 @@ export class AuthService {
         });
     }
 
-    // ==============================
-    // PRIVATE HELPER METHODS - SESSION OPERATIONS
-    // ==============================
-
-    /**
-     * Finds active session by device token
-     */
     private async findActiveSession(deviceToken: string): Promise<Session> {
         const session = await this.sessionRepository.findOne({
-            where: { deviceToken/* , isActive: true  */ },
+            where: { deviceToken },
             relations: ['user']
         });
 
@@ -714,9 +577,6 @@ export class AuthService {
         return session;
     }
 
-    /**
-     * Finds user session by user ID and device token
-     */
     private async findUserSession(userId: string, deviceToken: string): Promise<Session> {
         const session = await this.sessionRepository.findOne({
             where: { userId, deviceToken }
@@ -729,9 +589,6 @@ export class AuthService {
         return session;
     }
 
-    /**
-     * Finds or creates a session for user and device token
-     */
     private async findOrCreateSession(userId: string, deviceToken: string): Promise<Session> {
         let session = await this.sessionRepository.findOne({
             where: { userId, deviceToken }
@@ -748,31 +605,18 @@ export class AuthService {
         return session;
     }
 
-    /**
-     * Validates session for biometric operations
-     */
     private validateSessionForBiometrics(session: Session): void {
         if (!session.isActive) {
             throw new BadRequestException('The specified device session is inactive. Please activate the session first.');
         }
     }
 
-    /**
-     * Validates biometric is enabled for session
-     */
     private validateBiometricEnabled(session: Session): void {
         if (!session.biometricEnabled) {
             throw new UnauthorizedException('Biometrics not enabled for this device');
         }
     }
 
-    // ==============================
-    // PRIVATE HELPER METHODS - DEVICE TOKEN OPERATIONS
-    // ==============================
-
-    /**
-     * Gets all device tokens for a user
-     */
     private async getAllDeviceTokens(userId: string): Promise<DeviceTokenInfo[]> {
         const sessions = await this.sessionRepository.find({
             where: { userId },
@@ -791,9 +635,6 @@ export class AuthService {
             }));
     }
 
-    /**
-     * Gets found device token information if deviceToken is provided
-     */
     private async getFoundDeviceToken(userId: string, deviceToken?: string): Promise<FoundDeviceTokenInfo | null> {
         if (!deviceToken) {
             return null;
@@ -817,9 +658,6 @@ export class AuthService {
         };
     }
 
-    /**
-     * Validates device token uniqueness across users
-     */
     private async validateDeviceTokenUniqueness(deviceToken: string, userId: string): Promise<void> {
         const existingSession = await this.sessionRepository.findOne({
             where: { deviceToken, isActive: true }
@@ -830,13 +668,6 @@ export class AuthService {
         }
     }
 
-    // ==============================
-    // PRIVATE HELPER METHODS - BIOMETRIC OPERATIONS
-    // ==============================
-
-    /**
-     * Disables biometrics for specific device
-     */
     private async disableBiometricsForDevice(userId: string, deviceToken: string): Promise<BiometricResponse> {
         const session = await this.sessionRepository.findOne({
             where: { userId, deviceToken }
@@ -856,17 +687,12 @@ export class AuthService {
         };
     }
 
-    /**
-     * Disables biometrics for all user devices
-     */
     private async disableBiometricsForAllDevices(userId: string): Promise<BiometricResponse> {
-        // Disable biometrics for all sessions
         await this.sessionRepository.update(
             { userId },
             { biometricEnabled: false }
         );
 
-        // Deactivate all user sessions
         await this.sessionRepository.update(
             { userId, isActive: true },
             { isActive: false }
@@ -877,13 +703,6 @@ export class AuthService {
         };
     }
 
-    // ==============================
-    // PRIVATE HELPER METHODS - SETTINGS & RESPONSE
-    // ==============================
-
-    /**
-     * Gets or creates app settings
-     */
     private async getAppSettings(): Promise<AppSettings> {
         let settings = await this.appSettingsRepository.findOne({
             where: { id: this.DEFAULT_SETTINGS_ID }
@@ -894,7 +713,7 @@ export class AuthService {
                 id: this.DEFAULT_SETTINGS_ID,
                 allowMultipleSessions: true,
                 globalSessionVersion: 0,
-                defaultMaxSessionMinutes: 2, // 2 minutes expiration
+                defaultMaxSessionMinutes: 2,
             });
             settings = await this.appSettingsRepository.save(settings);
         }
@@ -902,9 +721,6 @@ export class AuthService {
         return settings;
     }
 
-    /**
-     * Builds standardized auth response
-     */
     private async buildAuthResponse(user: User, foundDeviceToken: FoundDeviceTokenInfo | null): Promise<AuthResponse> {
         const appSettings = await this.getAppSettings();
         const token = await this.getJwtToken({ id: user.id });
@@ -923,11 +739,7 @@ export class AuthService {
         };
     }
 
-    /**
-     * Generates a refresh token with longer expiration
-     */
     private async generateRefreshToken(payload: { id: string }): Promise<string> {
-        // 30 días por defecto
         const expiresIn = '2m';
         const { envs } = await import('../config');
         return this.jwtService.sign(
@@ -939,22 +751,12 @@ export class AuthService {
         );
     }
 
-    /**
-     * Increments global session version to invalidate all tokens
-     */
     private async incrementGlobalSessionVersion(): Promise<void> {
         const settings = await this.getAppSettings();
         settings.globalSessionVersion += 1;
         await this.appSettingsRepository.save(settings);
     }
 
-    // ==============================
-    // ERROR HANDLING
-    // ==============================
-
-    /**
-     * Handles token-specific errors
-     */
     private handleTokenErrors(error: any): never {
         if (error.name === 'JsonWebTokenError') {
             throw new UnauthorizedException('Invalid token signature');
@@ -973,9 +775,6 @@ export class AuthService {
         throw new UnauthorizedException('Token validation failed');
     }
 
-    /**
-     * Handles database exceptions
-     */
     private handleDbExceptions(error: any): never {
         if (error.code === '23505') {
             throw new BadRequestException(error.detail);

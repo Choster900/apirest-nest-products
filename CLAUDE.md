@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Teslo Shop API - A NestJS REST API for an e-commerce shop with authentication, product management, file uploads, push notifications, and session management. The project uses PostgreSQL with TypeORM, JWT authentication with session tracking, Firebase Cloud Messaging for push notifications, and includes disabled Bull/Redis queue infrastructure.
+Teslo Shop API - A NestJS REST API with authentication, push notifications, and session management. The project uses PostgreSQL with TypeORM, JWT authentication with session tracking, Firebase Cloud Messaging for push notifications, and includes disabled Bull/Redis queue infrastructure.
 
 ## Development Commands
 
@@ -34,10 +34,8 @@ npm run test:e2e      # Run end-to-end tests
 
 - **AppModule** (`src/app.module.ts`): Root module with TypeORM PostgreSQL configuration (SSL enabled for Neon), ServeStaticModule for public files, and disabled Bull/Redis queue setup
 - **AuthModule**: JWT authentication, session management, user blocking on failed attempts, biometric login support
-- **ProductsModule**: Product CRUD operations with images, slug generation, TypeORM entities
 - **PushNotificationsModule**: Firebase Cloud Messaging integration for sending notifications (global and user-specific)
-- **FilesModule**: File upload handling
-- **SeedModule**: Database seeding for products and app settings
+- **SeedModule**: Database seeding for app settings
 - **AppSettingsModule**: Application-wide configuration (session settings, multiple sessions control)
 - **CommonModule**: Shared utilities including Firebase configuration
 
@@ -112,23 +110,17 @@ Firebase Cloud Messaging integration via `PushNotificationsModule`:
 ### Seeding
 
 `SeedService` provides database initialization:
-- Seeds app settings first (creates default if not exists)
-- Deletes all products before inserting seed data
-- Uses `initialData` from `seed-data` and `initialAppSettingsData`
+- Seeds app settings (creates default if not exists)
+- Uses `initialAppSettingsData` from `app-settings-seed`
 - Endpoint available via `SeedModule` for development
 
 ## Key Implementation Patterns
 
-### Entity Lifecycle Hooks
-Products use `@BeforeInsert()` and `@BeforeUpdate()` to auto-generate slugs from titles (lowercase, underscores, no apostrophes)
-
 ### Cascade Operations
-- Product entity cascades to ProductImage (delete product → delete images)
 - User entity cascades to Session (delete user → delete sessions)
 - Session entity has `onDelete: 'CASCADE'` for user relationship
 
 ### TypeORM Relations
-- Products: `@OneToMany` with ProductImage (eager loading enabled)
 - Users: `@OneToMany` with Session
 - Sessions: `@ManyToOne` with User
 

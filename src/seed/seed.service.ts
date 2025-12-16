@@ -1,34 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { ProductsService } from './../products/products.service';
 import { AppSettingsService } from '../app-settings/app-settings.service';
-import { initialData } from './data/seed-data';
 import { initialAppSettingsData } from './data/app-settings-seed';
 
 @Injectable()
 export class SeedService {
 
     constructor(
-        private readonly productService: ProductsService,
         private readonly appSettingsService: AppSettingsService
     ) { }
 
     async runSeed() {
-
-        // Seed App Settings first
+        // Seed App Settings
         await this.seedAppSettings();
-
-        await this.insertNewProducts()
-
-        const seedProducts = initialData.products
-
-        const insertsPromises: Promise<any>[] = []
-
-        seedProducts.forEach(product => {
-
-            insertsPromises.push(this.productService.create(product))
-        })
-
-        await Promise.all(insertsPromises)
 
         return 'SEED EXECUTED'
     }
@@ -36,12 +19,6 @@ export class SeedService {
     async runAppSettingsSeed() {
         await this.seedAppSettings();
         return 'APP SETTINGS SEED EXECUTED';
-    }
-
-    private async insertNewProducts() {
-        await this.productService.deleteAllProducts()
-
-        return true
     }
 
     private async seedAppSettings() {

@@ -38,63 +38,14 @@ export class AuthController {
             status: 'completed',
             user: result
         };
-
-        /* CÓDIGO CON QUEUE COMENTADO TEMPORALMENTE
-        const jobId = uuid();
-
-        // Agregar el job a la cola
-        const job = await this.usersQueue.add('register', {
-            userData: createUserDto,
-            jobId: jobId
-        }, {
-            attempts: 3,
-            backoff: {
-                type: 'exponential',
-                delay: 2000,
-            },
-            removeOnComplete: 10,
-            removeOnFail: 5,
-        });
-
-        return {
-            message: 'User registration queued successfully',
-            jobId: jobId,
-            status: 'queued',
-            estimatedProcessingTime: '2-5 seconds',
-            note: 'Check job status using /auth/job-status/:jobId endpoint'
-        };
-        */
     }
 
-    /* TEMPORALMENTE DESHABILITADO - MÉTODO QUE REQUIERE QUEUE
-    @Get('job-status/:jobId')
-    @UseGuards(PublicKeyGuard)
-    async getJobStatus(@Param('jobId') jobId: string) {
-        try {
-            // Buscar el job por ID
-            const job = await this.usersQueue.getJob(jobId);
-            if (!job) {
-                throw new NotFoundException(`Job with ID ${jobId} not found`);
-            }
-            // ... resto del código ...
-            return response;
-        } catch (error) {
-            if (error instanceof NotFoundException) {
-                throw error;
-            }
-            throw new BadRequestException(`Error checking job status: ${error.message}`);
-        }
-    }
-    */
 
     @Post('login')
     @UseGuards(PublicKeyGuard)
     async loginUser(@Body() loginUserDto: LoginUserDto, @Res({ passthrough: true }) response: Response) {
         const result = await this.authService.login(loginUserDto);
 
-        // Establecer cookie HttpOnly segura (token seguro)
-        //this.setSecureCookie(response, result.token);
-        // Establecer refresh token en cookie HttpOnly
         this.setRefreshCookie(response, result.refreshToken);
 
         const { refreshToken, ...rest } = result;
@@ -162,27 +113,6 @@ export class AuthController {
         };
     }
 
-    @Post('logout')
-    @UseGuards(CookieAuthGuard)
-    logout(@Res({ passthrough: true }) response: Response) {
-        // Limpiar la cookie segura y la de refresh
-        response.clearCookie('secure_token', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            path: '/'
-        });
-        response.clearCookie('secure_refresh_token', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            path: '/'
-        });
-        return {
-            message: 'Logged out successfully',
-            success: true
-        };
-    }
 
     @Get('check-auth-header')
     @UseGuards(PublicKeyGuard)
@@ -208,14 +138,6 @@ export class AuthController {
         return this.authService.verifyJwtToken(token, deviceToken);
     }
 
-
-    @Post('generate-device-token')
-    @UseGuards(FlexibleAuthGuard)
-    async generateDeviceToken(@Req() request: Request) {
-        // El guard ya validó el token y adjuntó la información del usuario
-        const authResult = request['user'];
-        return this.authService.generateDeviceToken();
-    }
 
     @Post('refresh-token')
     @UseGuards(RefreshTokenGuard)
@@ -282,20 +204,6 @@ export class AuthController {
             secureTokenSet: true,
             refreshTokenSet: true
         };
-    }
-
-    @Get('private')
-    @Auth()
-    testingPrivateRoute(
-        @GetUser() user: User,
-        @GetUser('email') userEmail: string,
-    ) {
-        return {
-            ok: true,
-            message: 'Hola mundo privado',
-            user,
-            userEmail,
-        }
     }
 
     @Post('check-main-device')
